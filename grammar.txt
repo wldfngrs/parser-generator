@@ -1,0 +1,5 @@
+Goal > List
+List > List Pair
+List > Pair
+Pair > ( Pair )
+Pair > ( )
