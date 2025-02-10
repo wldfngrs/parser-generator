@@ -5,7 +5,6 @@
 #include <map>
 #include <vector>
 #include <array>
-#include <cassert>
 #include <set>
 #include <unordered_map>
 
@@ -32,6 +31,11 @@ class ParserGen {
 		REDUCE,
 		ACCEPT,
 		ERROR,
+	};
+
+	enum ParseGenLvl {
+		TERMINALS,
+		PRODUCTIONS,
 	};
 
 	bool debug = true;
@@ -71,33 +75,39 @@ class ParserGen {
 	std::vector<GotoTableInput> gotoTable;
 
 	struct Item {
-		size_t position;
 		std::vector<std::string> production;
+		size_t position;
 		std::string lookahead;
 	};
 
 	std::vector<Item> canonicalCollection;
 
-	void print_debug_info() {
-		std::cout << "Terminals\n" << "=========\n";
-		for (auto& terminal : terminals) {
-			std::cout << terminal.literal << "\n";
-		}
-		
-		std::cout << "\nProductions\n" << "===========\n";
-		for (auto& production : productions) {
-			std::cout << production.first << " > ";
-
-			std::vector<std::vector<std::string>> values = production.second;
-			for (auto& value : values) {
-				std::cout << "{ ";
-				for (auto& v : value) {
-					std::cout << v << " ";
-				}
-				std::cout << "} ";
+	void print_debug_info(ParseGenLvl pg_lvl ) {
+		switch (pg_lvl) {
+		case TERMINALS:
+			// TODO: pretty print terminals in 8-column table.
+			std::cout << "Terminals\n" << "=========\n";
+			for (auto& terminal : terminals) {
+				std::cout << terminal.literal << "\n";
 			}
+			break;
+		case PRODUCTIONS:
+			std::cout << "\nProductions\n" << "===========\n";
+			for (auto& production : productions) {
+				std::cout << production.first << " > ";
 
-			std::cout << "\n";
+				std::vector<std::vector<std::string>> values = production.second;
+				for (auto& value : values) {
+					std::cout << "{ ";
+					for (auto& v : value) {
+						std::cout << v << " ";
+					}
+					std::cout << "} ";
+				}
+
+				std::cout << "\n";
+			}
+			break;
 		}
 	}
 
@@ -128,14 +138,14 @@ public:
 					auto start = 0;
 					auto j = 0;
 
-					while ((line[j] != ' ' || line[j] != '\t') && 
-						    isAlpha(line[j])) {
+					while ((line[j] != ' ' || line[j] != '\t') &&
+						isAlpha(line[j])) {
 						j++;
 					}
-					
-					// key has been scanned
-					std::string key = std::string(line, start, j++);
-					
+
+					// lhs of production has been scanned
+					std::string lhs = std::string(line, start, j++);
+
 					// scan until the first letter, representing the rhs of a production.
 					while (!isAlpha(line[j])) {
 						j++;
@@ -146,7 +156,7 @@ public:
 					for (auto k = j; k < line.size(); k++) {
 
 						if (line[k] == ' ' ||
-							line[k] == '\t'||
+							line[k] == '\t' ||
 							line[k] == '\n')
 						{
 							std::string value = std::string(line, start, k - start);
@@ -155,16 +165,23 @@ public:
 						}
 					}
 
-					productions[key].push_back(rhs);
+					productions[lhs].push_back(rhs);
 				}
 				else {
 					// error in grammar_txt
-				}				
+				}
 				l_no++;
 			}
 		}
 
-		if (debug) print_debug_info();
+		if (debug) {
+			print_debug_info(TERMINALS);
+			print_debug_info(PRODUCTIONS);
+		}
+	}
+
+	void generate_cc() {
+		
 	}
 };
 
@@ -176,5 +193,6 @@ int main(int argc, char** argv) {
 
 	ParserGen parserGen(argv[1]);
 	parserGen.get_terminals_and_productions();
+	parserGen.generate_cc();
 	//parserGen.generateCC();
 }
