@@ -1,5 +1,8 @@
+t_lp
+t_rp
+
 Goal > List
 List > List Pair
 List > Pair
-Pair > ( Pair )
-Pair > ( )
+Pair > t_lp Pair t_rp
+Pair > t_lp t_rp
