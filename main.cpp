@@ -5,7 +5,7 @@
 #include <map>
 #include <vector>
 #include <array>
-#include <set>
+#include <unordered_set>
 #include <unordered_map>
 
 // std::map<std::pair<std::string, Action>, size_t> actionTable;
@@ -23,7 +23,6 @@ static bool isAlpha(char c) {
 }
 
 class ParserGen {
-	size_t l_no = 1;
 	std::string txt;
 
 	enum Action {
@@ -52,35 +51,46 @@ class ParserGen {
 		size_t next;
 	};
 
-	struct Terminal {
-		std::string literal;
-		size_t line;
-
-		Terminal(std::string literal, size_t line)
-			: literal{ literal }, line{ line } {}
-
-		bool operator<(const Terminal& rhs) const noexcept {
-			return this->literal < rhs.literal;
-		}
-	};
+	//struct Terminal {
+	//	std::string literal;
+	//	size_t line;
+	//
+	//	Terminal(std::string literal, size_t line)
+	//		: literal{ literal }, line{ line } {}
+	//
+	//	bool operator==(const Terminal& other) const {
+	//		return literal == other.literal;
+	//	}
+	//};
 
 	// 'string' as key, 'vector of vectors of strings' as value
 	// Example key-value pairing:
 	// "List" : {{"List", "Pair"}, {"Pair"}}
-	// "Pair" : {{"t_lp", "Pair", "t_rp"}, {"t_lp", "t_rp"}} 
+	// "Pair" : {{"t_lp", "Pair", "t_rp"}, {"t_lp", "t_rp"}}
 	std::unordered_map<std::string, std::vector<std::vector<std::string>>> productions;
-	std::set<Terminal> terminals;
+	std::unordered_set<std::string> terminals;
 
 	std::vector<ActionTableInput> actionTable;
 	std::vector<GotoTableInput> gotoTable;
 
 	struct Item {
-		std::vector<std::string> production;
 		size_t position;
+		std::vector<std::string> production;
 		std::string lookahead;
 	};
 
-	std::vector<Item> canonicalCollection;
+	struct ItemHash {
+		size_t operator()(const Item& item) const {
+			std::string out;
+			for (auto p : item.production) {
+				out += p;
+			}
+
+			return std::hash<std::string>{}(out) ^ std::hash<size_t>{}(item.position);
+		}
+	};
+
+	std::unordered_set<Item, ItemHash> canonicalCollection;
 
 	void print_debug_info(ParseGenLvl pg_lvl ) {
 		switch (pg_lvl) {
@@ -88,7 +98,7 @@ class ParserGen {
 			// TODO: pretty print terminals in 8-column table.
 			std::cout << "Terminals\n" << "=========\n";
 			for (auto& terminal : terminals) {
-				std::cout << terminal.literal << "\n";
+				std::cout << terminal << "\n";
 			}
 			break;
 		case PRODUCTIONS:
@@ -111,6 +121,14 @@ class ParserGen {
 		}
 	}
 
+	std::unordered_set<Item> closure_function(std::vector<Item> canonicalCollection) {
+		
+	}
+
+	void goto_function() {
+	
+	}
+
 public:
 	ParserGen(std::string pathToGrammar) {
 		std::stringstream ss;
@@ -123,6 +141,7 @@ public:
 	void get_terminals_and_productions() {
 		auto start_txt = 0;
 		std::string line;
+		size_t l_no = 1; // solely for error-reporting
 		for (size_t i = 0; i < txt.length(); i++) {
 			if (txt[i] == '\n') {
 				line = std::string(txt, start_txt, i - start_txt + 1);
@@ -131,7 +150,7 @@ public:
 				// if terminal
 				if (line[0] == 't' && line[1] == '_') {
 					// TODO: ensure that the line contains no spaces.
-					terminals.emplace(std::string(line, 0, line.size() - 1), l_no);
+					terminals.emplace(std::string(line, 0, line.size() - 1));
 				}
 				else if (isAlpha(line[0])) {
 					// if non-terminal. That is, production
@@ -181,7 +200,7 @@ public:
 	}
 
 	void generate_cc() {
-		
+		Item begin{ 1, {"Goal", "List"}, "t_eof" };
 	}
 };
 
