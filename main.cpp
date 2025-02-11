@@ -103,9 +103,9 @@ class ParserGen {
 		case CANONICAL_SET:
 			std::cout << "\nCanonical Set\n=============\n";
 			auto count = 0;
-			for (auto& CC_i : canonicalCollection) {
+			for (auto& canonicalSet_i : canonicalCollection) {
 				std::cout << "C_" << count++ << ":\n";
-				for (auto& item : CC_i.second) {
+				for (auto& item : canonicalSet_i.second) {
 					std::cout << "[" << item.position << ", " << item.production[0] << " ->";
 					for (auto i = 1; i < item.production.size(); i++) {
 						std::cout << " " << item.production[i];
@@ -117,8 +117,8 @@ class ParserGen {
 		}
 	}
 
-	void closure_function(std::unordered_set<Item, ItemHash>& canonicalCollection_i) {
-		for (auto& item : canonicalCollection_i) {
+	void closure_function(std::unordered_set<Item, ItemHash>& canonicalSet_i) {
+		for (auto& item : canonicalSet_i) {
 			std::string C = item.production[item.position];
 			
 			// generate [first] for item
@@ -159,13 +159,13 @@ class ParserGen {
 				}
 
 				for (auto& b : first) {
-					canonicalCollection_i.emplace(1, cItemProd, b);
+					canonicalSet_i.emplace(1, cItemProd, b);
 				}
 			}
 		}
 	}
 
-	void goto_function(std::unordered_set<Item, ItemHash>& canonicalCollection, std::string symbol) {
+	void goto_function(std::unordered_set<Item, ItemHash>& canonicalSet_i, std::string symbol) {
 		
 	}
 
@@ -258,7 +258,7 @@ public:
 	}
 
 	void build_cc() {
-		std::unordered_set<Item, ItemHash> canonicalCollection_i;
+		std::unordered_set<Item, ItemHash> canonicalSet_0;
 		auto goal = productions.begin();
 		for (auto& el : (*goal).second) {			
 			std::vector<std::string> beginItemProd;
@@ -266,14 +266,19 @@ public:
 			for (auto& e : el) {
 				beginItemProd.push_back(e);
 			}
-			canonicalCollection_i.emplace(1, beginItemProd, "t_eof");
+			canonicalSet_0.emplace(1, beginItemProd, "t_eof");
 		}
 
-		closure_function(canonicalCollection_i);
-		canonicalCollection.emplace_back(false, canonicalCollection_i);
+		closure_function(canonicalSet_0);
+		canonicalCollection.emplace_back(false, canonicalSet_0);
 		
-		for (auto& cc_i : canonicalCollection) {
-			
+		for (auto& canonicalSet_i : canonicalCollection) {
+			if (canonicalSet_i.first == false) {
+				canonicalSet_i.first = true;
+				for (auto& item : canonicalSet_i.second) {
+					goto_function(canonicalSet_i.second, item.production[item.position]);
+				}
+			}
 		}
 
 		if (debug) print_debug_info(CANONICAL_SET);
