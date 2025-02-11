@@ -166,7 +166,15 @@ class ParserGen {
 	}
 
 	void goto_function(std::unordered_set<Item, ItemHash>& canonicalSet_i, std::string symbol) {
-		
+		std::unordered_set<Item, ItemHash> moved;
+		for (auto& item : canonicalSet_i) {
+			if (item.production[item.position] == symbol) {
+				auto new_item_position = item.position + 1;
+				moved.emplace(new_item_position, item.production, item.lookahead);
+			}
+		}
+
+		closure_function(moved);
 	}
 
 	// 'string' as key, 'vector of vectors of strings' as value
@@ -260,26 +268,26 @@ public:
 	void build_cc() {
 		std::unordered_set<Item, ItemHash> canonicalSet_0;
 		auto goal = productions.begin();
-		for (auto& el : (*goal).second) {			
+		for (auto& production : (*goal).second) {			
 			std::vector<std::string> beginItemProd;
 			beginItemProd.push_back((*goal).first);
-			for (auto& e : el) {
-				beginItemProd.push_back(e);
+			for (auto& symbol : production) {
+				beginItemProd.push_back(symbol);
 			}
-			canonicalSet_0.emplace(1, beginItemProd, "t_eof");
+			canonicalSet_0.emplace(1, beginItemProd, production[production.size() - 1]);
 		}
 
 		closure_function(canonicalSet_0);
 		canonicalCollection.emplace_back(false, canonicalSet_0);
 		
-		for (auto& canonicalSet_i : canonicalCollection) {
-			if (canonicalSet_i.first == false) {
-				canonicalSet_i.first = true;
-				for (auto& item : canonicalSet_i.second) {
-					goto_function(canonicalSet_i.second, item.production[item.position]);
-				}
-			}
-		}
+		//for (auto& canonicalSet_i : canonicalCollection) {
+		//	if (canonicalSet_i.first == false) {
+		//		canonicalSet_i.first = true;
+		//		for (auto& item : canonicalSet_i.second) {
+		//			goto_function(canonicalSet_i.second, item.production[item.position]);
+		//		}
+		//	}
+		//}
 
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
