@@ -23,8 +23,6 @@ static bool isAlpha(char c) {
 }
 
 class ParserGen {
-	std::string txt;
-
 	enum Action {
 		SHIFT,
 		REDUCE,
@@ -35,9 +33,8 @@ class ParserGen {
 	enum ParseGenLvl {
 		TERMINALS,
 		PRODUCTIONS,
+		GOAL,
 	};
-
-	bool debug = true;
 
 	struct ActionTableInput {
 		// First string: Terminal,
@@ -63,20 +60,19 @@ class ParserGen {
 	//	}
 	//};
 
-	// 'string' as key, 'vector of vectors of strings' as value
-	// Example key-value pairing:
-	// "List" : {{"List", "Pair"}, {"Pair"}}
-	// "Pair" : {{"t_lp", "Pair", "t_rp"}, {"t_lp", "t_rp"}}
-	std::unordered_map<std::string, std::vector<std::vector<std::string>>> productions;
-	std::unordered_set<std::string> terminals;
-
-	std::vector<ActionTableInput> actionTable;
-	std::vector<GotoTableInput> gotoTable;
-
 	struct Item {
 		size_t position;
 		std::vector<std::string> production;
 		std::string lookahead;
+
+		Item(size_t pos, std::vector<std::string> prod, std::string la)
+			: position{ pos }, production{ prod }, lookahead{ la } {}
+
+		bool operator==(const Item& other) const {
+			return position == other.position &&
+				production == other.production &&
+				lookahead == other.lookahead;
+		}
 	};
 
 	struct ItemHash {
@@ -90,19 +86,17 @@ class ParserGen {
 		}
 	};
 
-	std::unordered_set<Item, ItemHash> canonicalCollection;
-
 	void print_debug_info(ParseGenLvl pg_lvl ) {
 		switch (pg_lvl) {
 		case TERMINALS:
 			// TODO: pretty print terminals in 8-column table.
-			std::cout << "Terminals\n" << "=========\n";
+			std::cout << "Terminals\n=========\n";
 			for (auto& terminal : terminals) {
 				std::cout << terminal << "\n";
 			}
 			break;
 		case PRODUCTIONS:
-			std::cout << "\nProductions\n" << "===========\n";
+			std::cout << "\nProductions\n===========\n";
 			for (auto& production : productions) {
 				std::cout << production.first << " > ";
 
@@ -118,6 +112,15 @@ class ParserGen {
 				std::cout << "\n";
 			}
 			break;
+		case GOAL:
+			std::cout << "\nGoal\n====\n";
+			for (auto& item : canonicalCollection) {
+				std::cout << "[" << item.position << ", " << item.production[0] << " ->";
+				for (auto i = 1; i < item.production.size(); i++) {
+					std::cout << " " << item.production[i];
+				}
+				std::cout << ", " << item.lookahead << "]\n";
+			}
 		}
 	}
 
@@ -128,6 +131,20 @@ class ParserGen {
 	void goto_function() {
 	
 	}
+
+	// 'string' as key, 'vector of vectors of strings' as value
+	// Example key-value pairing:
+	// "List" : {{"List", "Pair"}, {"Pair"}}
+	// "Pair" : {{"t_lp", "Pair", "t_rp"}, {"t_lp", "t_rp"}}
+	std::unordered_map<std::string, std::vector<std::vector<std::string>>> productions;
+	std::unordered_set<std::string> terminals;
+
+	std::vector<ActionTableInput> actionTable;
+	std::vector<GotoTableInput> gotoTable;
+
+	std::string txt;
+	bool debug = true;
+	std::unordered_set<Item, ItemHash> canonicalCollection;
 
 public:
 	ParserGen(std::string pathToGrammar) {
@@ -173,13 +190,12 @@ public:
 					start = j;
 					std::vector<std::string> rhs;
 					for (auto k = j; k < line.size(); k++) {
-
 						if (line[k] == ' ' ||
 							line[k] == '\t' ||
 							line[k] == '\n')
 						{
 							std::string value = std::string(line, start, k - start);
-							rhs.push_back(value);
+							if (value != "") rhs.push_back(value);
 							start = k + 1;
 						}
 					}
@@ -200,7 +216,17 @@ public:
 	}
 
 	void generate_cc() {
-		Item begin{ 1, {"Goal", "List"}, "t_eof" };
+		auto goal = productions.begin();
+		for (auto& el : (*goal).second) {			
+			std::vector<std::string> beginItemProd;
+			beginItemProd.push_back((*goal).first);
+			for (auto& e : el) {
+				beginItemProd.push_back(e);
+			}
+			canonicalCollection.emplace(1, beginItemProd, "t_eof");
+		}
+
+		if (debug) print_debug_info(GOAL);
 	}
 };
 
