@@ -102,24 +102,29 @@ class ParserGen {
 			break;
 		case CANONICAL_SET:
 			std::cout << "\nCanonical Set\n=============\n";
-			for (auto& item : canonicalCollection) {
-				std::cout << "[" << item.position << ", " << item.production[0] << " ->";
-				for (auto i = 1; i < item.production.size(); i++) {
-					std::cout << " " << item.production[i];
+			auto count = 0;
+			for (auto& CC_i : canonicalCollection) {
+				std::cout << "C_" << count++ << ":\n";
+				for (auto& item : CC_i.second) {
+					std::cout << "[" << item.position << ", " << item.production[0] << " ->";
+					for (auto i = 1; i < item.production.size(); i++) {
+						std::cout << " " << item.production[i];
+					}
+					std::cout << ", " << item.lookahead << "]\n";
 				}
-				std::cout << ", " << item.lookahead << "]\n";
+				std::cout << "\n";
 			}
 		}
 	}
 
-	void closure_function(std::unordered_set<Item, ItemHash>& canonicalCollection) {
-		for (auto& item : canonicalCollection) {
+	void closure_function(std::unordered_set<Item, ItemHash>& canonicalCollection_i) {
+		for (auto& item : canonicalCollection_i) {
 			std::string C = item.production[item.position];
 			
 			// generate [first] for item
 			std::unordered_set<std::string> first{item.lookahead};
-			for (auto i = item.position + 1; i < item.production.size(); i++) {
-				std::string symbol = item.production[i];
+			if ((item.position + 1) < item.production.size()) {
+				std::string symbol = item.production[item.position + 1];
 				if (terminals.count(symbol) == 1) {
 					// if rhs symbol is a terminal
 					first.insert(symbol);
@@ -154,14 +159,14 @@ class ParserGen {
 				}
 
 				for (auto& b : first) {
-					canonicalCollection.emplace(1, cItemProd, b);
+					canonicalCollection_i.emplace(1, cItemProd, b);
 				}
 			}
 		}
 	}
 
-	void goto_function() {
-	
+	void goto_function(std::unordered_set<Item, ItemHash>& canonicalCollection, std::string symbol) {
+		
 	}
 
 	// 'string' as key, 'vector of vectors of strings' as value
@@ -177,7 +182,7 @@ class ParserGen {
 
 	std::string txt;
 	bool debug = true;
-	std::unordered_set<Item, ItemHash> canonicalCollection;
+	std::vector<std::pair<bool, std::unordered_set<Item, ItemHash>>> canonicalCollection;
 
 public:
 	ParserGen(std::string pathToGrammar) {
@@ -252,7 +257,8 @@ public:
 		}
 	}
 
-	void generate_cc() {
+	void build_cc() {
+		std::unordered_set<Item, ItemHash> canonicalCollection_i;
 		auto goal = productions.begin();
 		for (auto& el : (*goal).second) {			
 			std::vector<std::string> beginItemProd;
@@ -260,12 +266,15 @@ public:
 			for (auto& e : el) {
 				beginItemProd.push_back(e);
 			}
-			canonicalCollection.emplace(1, beginItemProd, "t_eof");
+			canonicalCollection_i.emplace(1, beginItemProd, "t_eof");
 		}
 
-		if (debug) print_debug_info(CANONICAL_SET);
-
-		closure_function(canonicalCollection);
+		closure_function(canonicalCollection_i);
+		canonicalCollection.emplace_back(false, canonicalCollection_i);
+		
+		for (auto& cc_i : canonicalCollection) {
+			
+		}
 
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
@@ -279,6 +288,5 @@ int main(int argc, char** argv) {
 
 	ParserGen parserGen(argv[1]);
 	parserGen.get_terminals_and_productions();
-	parserGen.generate_cc();
-	//parserGen.generateCC();
+	parserGen.build_cc();
 }
