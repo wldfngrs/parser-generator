@@ -33,7 +33,7 @@ class ParserGen {
 	enum ParseGenLvl {
 		TERMINALS,
 		PRODUCTIONS,
-		GOAL,
+		CANONICAL_SET,
 	};
 
 	struct ActionTableInput {
@@ -47,18 +47,6 @@ class ParserGen {
 		std::string nonTerminal;
 		size_t next;
 	};
-
-	//struct Terminal {
-	//	std::string literal;
-	//	size_t line;
-	//
-	//	Terminal(std::string literal, size_t line)
-	//		: literal{ literal }, line{ line } {}
-	//
-	//	bool operator==(const Terminal& other) const {
-	//		return literal == other.literal;
-	//	}
-	//};
 
 	struct Item {
 		size_t position;
@@ -112,8 +100,8 @@ class ParserGen {
 				std::cout << "\n";
 			}
 			break;
-		case GOAL:
-			std::cout << "\nGoal\n====\n";
+		case CANONICAL_SET:
+			std::cout << "\nCanonical Set\n=============\n";
 			for (auto& item : canonicalCollection) {
 				std::cout << "[" << item.position << ", " << item.production[0] << " ->";
 				for (auto i = 1; i < item.production.size(); i++) {
@@ -124,8 +112,52 @@ class ParserGen {
 		}
 	}
 
-	std::unordered_set<Item> closure_function(std::vector<Item> canonicalCollection) {
-		
+	void closure_function(std::unordered_set<Item, ItemHash>& canonicalCollection) {
+		for (auto& item : canonicalCollection) {
+			std::string C = item.production[item.position];
+			
+			// generate [first] for item
+			std::unordered_set<std::string> first{item.lookahead};
+			for (auto i = item.position + 1; i < item.production.size(); i++) {
+				std::string symbol = item.production[i];
+				if (terminals.count(symbol) == 1) {
+					// if rhs symbol is a terminal
+					first.insert(symbol);
+				} else if (productions.count(symbol) == 1) {
+					// if rhs symbol is a non-terminal
+					// check if symbol is in "first" cache
+					if (firstCache.count(symbol) == 1) {
+						// yes
+						first.insert(firstCache[symbol]);
+					}
+					else {
+						// no
+						std::vector<std::vector<std::string>> rhs = productions[symbol];
+
+						for (auto& r : rhs) {
+							if (terminals.count(r[0]) == 1) {
+								first.insert(r[0]);
+								firstCache[r[0]] = r[0];
+							}
+						}
+					}
+				}
+			}
+
+			// Rest of closure algorithm
+			std::vector<std::vector<std::string>> rhs = productions[C];
+
+			for (auto& prod : rhs) {
+				std::vector<std::string> cItemProd{ C };
+				for (auto& p : prod) {
+					cItemProd.push_back(p);
+				}
+
+				for (auto& b : first) {
+					canonicalCollection.emplace(1, cItemProd, b);
+				}
+			}
+		}
 	}
 
 	void goto_function() {
@@ -138,6 +170,7 @@ class ParserGen {
 	// "Pair" : {{"t_lp", "Pair", "t_rp"}, {"t_lp", "t_rp"}}
 	std::unordered_map<std::string, std::vector<std::vector<std::string>>> productions;
 	std::unordered_set<std::string> terminals;
+	std::unordered_map<std::string, std::string> firstCache;
 
 	std::vector<ActionTableInput> actionTable;
 	std::vector<GotoTableInput> gotoTable;
@@ -160,7 +193,7 @@ public:
 		std::string line;
 		size_t l_no = 1; // solely for error-reporting
 		for (size_t i = 0; i < txt.length(); i++) {
-			if (txt[i] == '\n') {
+			if (txt[i] == '\n' || i == txt.length() - 1) {
 				line = std::string(txt, start_txt, i - start_txt + 1);
 				start_txt = i + 1;
 
@@ -198,6 +231,10 @@ public:
 							if (value != "") rhs.push_back(value);
 							start = k + 1;
 						}
+						else if (k == line.size() - 1) {
+							std::string value = std::string(line, start, k - start + 1);
+							if (value != "") rhs.push_back(value);
+						}
 					}
 
 					productions[lhs].push_back(rhs);
@@ -226,7 +263,11 @@ public:
 			canonicalCollection.emplace(1, beginItemProd, "t_eof");
 		}
 
-		if (debug) print_debug_info(GOAL);
+		if (debug) print_debug_info(CANONICAL_SET);
+
+		closure_function(canonicalCollection);
+
+		if (debug) print_debug_info(CANONICAL_SET);
 	}
 };
 
