@@ -311,17 +311,6 @@ public:
 					if (item.position >= item.production.size()) continue;
 					goto_function(canonicalSet_i.first, item.production[item.position], new_set);
 					canonicalCollection.emplace(new_set, false);
-					/////
-					//std::cout << "\n\n" << item.production[item.position] << "\n";
-					//for (auto& item : new_set) {
-					//	std::cout << "[" << item.position << ", " << item.production[0] << " ->";
-					//	for (auto i = 1; i < item.production.size(); i++) {
-					//		std::cout << " " << item.production[i];
-					//	}
-					//	std::cout << ", " << item.lookahead << "]\n";
-					//}
-					//std::cout << "\n";
-					/////
 				}
 			}
 		}
