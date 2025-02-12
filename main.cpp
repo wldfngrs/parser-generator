@@ -132,22 +132,23 @@ class ParserGen {
 
 	void closure_function(std::unordered_set<Item, ItemHash>& canonicalSet_i) {
 		for (auto& item : canonicalSet_i) {
+			if (item.position >= item.production.size()) continue;
 			std::string C = item.production[item.position];
 
 			// generate [first] for item
-			std::unordered_set<std::string> first{ item.lookahead };
+			std::unordered_set<std::string> first;
 			if ((item.position + 1) < item.production.size()) {
 				std::string symbol = item.production[item.position + 1];
 				if (terminals.count(symbol) == 1) {
 					// if rhs symbol is a terminal
-					first.insert(symbol);
+					first.emplace(symbol);
 				}
 				else if (productions.count(symbol) == 1) {
 					// if rhs symbol is a non-terminal
 					// check if symbol is in "first" cache
 					if (firstCache.count(symbol) == 1) {
 						// yes
-						first.insert(firstCache[symbol]);
+						first.emplace(firstCache[symbol]);
 					}
 					else {
 						// no
@@ -155,12 +156,16 @@ class ParserGen {
 
 						for (auto& r : rhs) {
 							if (terminals.count(r[0]) == 1) {
-								first.insert(r[0]);
+								first.emplace(r[0]);
 								firstCache[r[0]] = r[0];
 							}
 						}
 					}
 				}
+			}
+
+			if (first.empty()) {
+				first.emplace(item.lookahead);
 			}
 
 			// Rest of closure algorithm
@@ -182,7 +187,9 @@ class ParserGen {
 	void goto_function(const std::unordered_set<Item, ItemHash>& canonicalSet_i, std::string symbol,
 						std::unordered_set<Item, ItemHash>& moved) {
 		for (auto& item : canonicalSet_i) {
-			if (item.production[item.position] == symbol) {
+			if (item.position < item.production.size() &&
+				item.production[item.position] == symbol)
+			{
 				auto new_item_position = item.position + 1;
 				moved.emplace(new_item_position, item.production, item.lookahead);
 			}
@@ -301,8 +308,20 @@ public:
 				canonicalSet_i.second = true;
 				for (auto& item : canonicalSet_i.first) {
 					std::unordered_set<Item, ItemHash> new_set;
+					if (item.position >= item.production.size()) continue;
 					goto_function(canonicalSet_i.first, item.production[item.position], new_set);
 					canonicalCollection.emplace(new_set, false);
+					/////
+					//std::cout << "\n\n" << item.production[item.position] << "\n";
+					//for (auto& item : new_set) {
+					//	std::cout << "[" << item.position << ", " << item.production[0] << " ->";
+					//	for (auto i = 1; i < item.production.size(); i++) {
+					//		std::cout << " " << item.production[i];
+					//	}
+					//	std::cout << ", " << item.lookahead << "]\n";
+					//}
+					//std::cout << "\n";
+					/////
 				}
 			}
 		}
