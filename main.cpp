@@ -70,11 +70,23 @@ class ParserGen {
 				out += p;
 			}
 
+			out += item.lookahead;
 			return std::hash<std::string>{}(out) ^ std::hash<size_t>{}(item.position);
 		}
 	};
 
-	void print_debug_info(ParseGenLvl pg_lvl ) {
+	struct canonicalCollectionHash {
+		size_t operator()(const std::unordered_set<Item, ItemHash>& c) const {
+			size_t out = 1;
+			for (auto& item : c) {
+				out ^= ItemHash()(item);
+			}
+
+			return out;
+		}
+	};
+
+	void print_debug_info(ParseGenLvl pg_lvl) {
 		switch (pg_lvl) {
 		case TERMINALS:
 			// TODO: pretty print terminals in 8-column table.
@@ -105,7 +117,7 @@ class ParserGen {
 			auto count = 0;
 			for (auto& canonicalSet_i : canonicalCollection) {
 				std::cout << "C_" << count++ << ":\n";
-				for (auto& item : canonicalSet_i.second) {
+				for (auto& item : canonicalSet_i.first) {
 					std::cout << "[" << item.position << ", " << item.production[0] << " ->";
 					for (auto i = 1; i < item.production.size(); i++) {
 						std::cout << " " << item.production[i];
@@ -114,21 +126,23 @@ class ParserGen {
 				}
 				std::cout << "\n";
 			}
+			// default:
 		}
 	}
 
 	void closure_function(std::unordered_set<Item, ItemHash>& canonicalSet_i) {
 		for (auto& item : canonicalSet_i) {
 			std::string C = item.production[item.position];
-			
+
 			// generate [first] for item
-			std::unordered_set<std::string> first{item.lookahead};
+			std::unordered_set<std::string> first{ item.lookahead };
 			if ((item.position + 1) < item.production.size()) {
 				std::string symbol = item.production[item.position + 1];
 				if (terminals.count(symbol) == 1) {
 					// if rhs symbol is a terminal
 					first.insert(symbol);
-				} else if (productions.count(symbol) == 1) {
+				}
+				else if (productions.count(symbol) == 1) {
 					// if rhs symbol is a non-terminal
 					// check if symbol is in "first" cache
 					if (firstCache.count(symbol) == 1) {
@@ -165,8 +179,8 @@ class ParserGen {
 		}
 	}
 
-	void goto_function(std::unordered_set<Item, ItemHash>& canonicalSet_i, std::string symbol) {
-		std::unordered_set<Item, ItemHash> moved;
+	void goto_function(const std::unordered_set<Item, ItemHash>& canonicalSet_i, std::string symbol,
+						std::unordered_set<Item, ItemHash>& moved) {
 		for (auto& item : canonicalSet_i) {
 			if (item.production[item.position] == symbol) {
 				auto new_item_position = item.position + 1;
@@ -189,8 +203,9 @@ class ParserGen {
 	std::vector<GotoTableInput> gotoTable;
 
 	std::string txt;
+	std::string goal_terminate_symbol;
 	bool debug = true;
-	std::vector<std::pair<bool, std::unordered_set<Item, ItemHash>>> canonicalCollection;
+	std::unordered_map<std::unordered_set<Item, ItemHash>, bool, canonicalCollectionHash> canonicalCollection;
 
 public:
 	ParserGen(std::string pathToGrammar) {
@@ -213,6 +228,7 @@ public:
 				// if terminal
 				if (line[0] == 't' && line[1] == '_') {
 					// TODO: ensure that the line contains no spaces.
+					if (l_no == 1) goal_terminate_symbol = std::string(line, 0, line.size() - 1);
 					terminals.emplace(std::string(line, 0, line.size() - 1));
 				}
 				else if (isAlpha(line[0])) {
@@ -268,26 +284,28 @@ public:
 	void build_cc() {
 		std::unordered_set<Item, ItemHash> canonicalSet_0;
 		auto goal = productions.begin();
-		for (auto& production : (*goal).second) {			
+		for (auto& production : (*goal).second) {
 			std::vector<std::string> beginItemProd;
 			beginItemProd.push_back((*goal).first);
 			for (auto& symbol : production) {
 				beginItemProd.push_back(symbol);
 			}
-			canonicalSet_0.emplace(1, beginItemProd, production[production.size() - 1]);
+			canonicalSet_0.emplace(1, beginItemProd, goal_terminate_symbol);
 		}
 
 		closure_function(canonicalSet_0);
-		canonicalCollection.emplace_back(false, canonicalSet_0);
-		
-		//for (auto& canonicalSet_i : canonicalCollection) {
-		//	if (canonicalSet_i.first == false) {
-		//		canonicalSet_i.first = true;
-		//		for (auto& item : canonicalSet_i.second) {
-		//			goto_function(canonicalSet_i.second, item.production[item.position]);
-		//		}
-		//	}
-		//}
+		canonicalCollection.emplace(canonicalSet_0, false);
+
+		for (auto& canonicalSet_i : canonicalCollection) {
+			if (canonicalSet_i.second == false) {
+				canonicalSet_i.second = true;
+				for (auto& item : canonicalSet_i.first) {
+					std::unordered_set<Item, ItemHash> new_set;
+					goto_function(canonicalSet_i.first, item.production[item.position], new_set);
+					canonicalCollection.emplace(new_set, false);
+				}
+			}
+		}
 
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
