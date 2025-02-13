@@ -327,15 +327,7 @@ public:
 			}
 		}
 
-		auto count_unmarked = 0;
-		for (auto& canonicalSet_i : canonicalCollection) {
-			if (canonicalSet_i.second == false) {
-				count_unmarked++;
-			}
-		}
-
 		if (debug) print_debug_info(CANONICAL_SET);
-		// std::cout << "Unmarked cSets: " << count_unmarked << std::endl;
 	}
 };
 
