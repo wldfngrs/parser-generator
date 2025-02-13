@@ -211,7 +211,6 @@ class ParserGen {
 
 	std::string txt;
 	std::string goal_terminate_symbol;
-	bool debug = true;
 	std::unordered_map<std::unordered_set<Item, ItemHash>, bool, canonicalCollectionHash> canonicalCollection;
 
 public:
@@ -329,6 +328,8 @@ public:
 
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
+
+	bool debug = true;
 };
 
 int main(int argc, char** argv) {
@@ -338,6 +339,7 @@ int main(int argc, char** argv) {
 	}
 
 	ParserGen parserGen(argv[1]);
+	parserGen.debug = false;
 	parserGen.get_terminals_and_productions();
 	parserGen.build_cc();
 }
