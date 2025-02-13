@@ -299,23 +299,43 @@ public:
 			}
 			canonicalSet_0.emplace(1, beginItemProd, goal_terminate_symbol);
 		}
-
+		
+		auto number_of_unmarked_sets = 0;
 		closure_function(canonicalSet_0);
 		canonicalCollection.emplace(canonicalSet_0, false);
+		// count "unmarked" and keep looping until "unmarked" is equal
+		// to zero. That is, all available sets in canonicalCollection have
+		// been processed. This is to ensure that sets inserted after the
+		// current iterator position get visited in subsequent passes.
 
-		for (auto& canonicalSet_i : canonicalCollection) {
-			if (canonicalSet_i.second == false) {
-				canonicalSet_i.second = true;
-				for (auto& item : canonicalSet_i.first) {
-					std::unordered_set<Item, ItemHash> new_set;
-					if (item.position >= item.production.size()) continue;
-					goto_function(canonicalSet_i.first, item.production[item.position], new_set);
-					canonicalCollection.emplace(new_set, false);
+		++number_of_unmarked_sets;
+		while (number_of_unmarked_sets > 0) {
+			for (auto& canonicalSet_i : canonicalCollection) {
+				if (canonicalSet_i.second == false) {
+					canonicalSet_i.second = true;
+					for (auto& item : canonicalSet_i.first) {
+						std::unordered_set<Item, ItemHash> new_set;
+						if (item.position >= item.production.size()) continue;
+						goto_function(canonicalSet_i.first, item.production[item.position], new_set);
+						canonicalCollection.emplace(new_set, false);
+						++number_of_unmarked_sets;
+					}
+				}
+				else {
+					--number_of_unmarked_sets;
 				}
 			}
 		}
 
+		auto count_unmarked = 0;
+		for (auto& canonicalSet_i : canonicalCollection) {
+			if (canonicalSet_i.second == false) {
+				count_unmarked++;
+			}
+		}
+
 		if (debug) print_debug_info(CANONICAL_SET);
+		// std::cout << "Unmarked cSets: " << count_unmarked << std::endl;
 	}
 };
 
