@@ -90,13 +90,13 @@ class ParserGen {
 		switch (pg_lvl) {
 		case TERMINALS:
 			// TODO: pretty print terminals in 8-column table.
-			std::cout << "Terminals\n=========\n";
+			std::cout << "\nExtracted Terminals\n===================\n";
 			for (auto& terminal : terminals) {
 				std::cout << terminal << "\n";
 			}
 			break;
 		case PRODUCTIONS:
-			std::cout << "\nProductions\n===========\n";
+			std::cout << "\nExtracted Productions\n=====================\n";
 			for (auto& production : productions) {
 				std::cout << production.first << " > ";
 
@@ -113,7 +113,7 @@ class ParserGen {
 			}
 			break;
 		case CANONICAL_SET:
-			std::cout << "\nCanonical Set\n=============\n";
+			std::cout << "\nGenerated Canonical Set\n=======================\n";
 			auto count = 0;
 			for (auto& canonicalSet_i : canonicalCollection) {
 				std::cout << "C_" << count++ << ":\n";
@@ -210,10 +210,13 @@ class ParserGen {
 	std::vector<GotoTableInput> gotoTable;
 
 	std::string txt;
+	bool error = false;
 	std::string goal_terminate_symbol;
 	std::unordered_map<std::unordered_set<Item, ItemHash>, bool, canonicalCollectionHash> canonicalCollection;
 
 public:
+	bool debug = true;
+
 	ParserGen(std::string pathToGrammar) {
 		std::stringstream ss;
 		std::ifstream file(pathToGrammar, std::ios_base::in);
@@ -233,7 +236,18 @@ public:
 
 				// if terminal
 				if (line[0] == 't' && line[1] == '_') {
-					// TODO: ensure that the line contains no spaces.
+					// ensure that the token declarations do not contain whitespace.
+					auto j = 0;
+					while (j++ < line.size()) {
+						if (line[j] == ' ' ||
+							line[j] == '\t' ||
+							line[j] == '\r') {
+							std::cout << "Error at [" << l_no << "]: 'token' declarations shouldn't include spaces!\n";
+							error = true;
+							break;
+						}
+					}
+					
 					if (l_no == 1) goal_terminate_symbol = std::string(line, 0, line.size() - 1);
 					terminals.emplace(std::string(line, 0, line.size() - 1));
 				}
@@ -274,10 +288,14 @@ public:
 
 					productions[lhs].push_back(rhs);
 				}
+				else if (line == "\n") {
+					l_no++;
+				}
 				else {
 					// error in grammar_txt
+					std::cout << "Error at line [" << l_no << "]: Wrongly specified grammar. Review the guide to properly specifying grammar for the Parser-Generator.\n";
+					error = true;
 				}
-				l_no++;
 			}
 		}
 
@@ -288,6 +306,11 @@ public:
 	}
 
 	void build_cc() {
+		if (error) {
+			std::cout << "\n\nFatal error in grammar definition. Parser-Generator terminated early.\n";
+			return;
+		}
+
 		std::unordered_set<Item, ItemHash> canonicalSet_0;
 		auto goal = productions.begin();
 		for (auto& production : (*goal).second) {
@@ -302,6 +325,7 @@ public:
 		auto number_of_unmarked_sets = 0;
 		closure_function(canonicalSet_0);
 		canonicalCollection.emplace(canonicalSet_0, false);
+		
 		// count "unmarked" and keep looping until "unmarked" is equal
 		// to zero. That is, all available sets in canonicalCollection have
 		// been processed. This is to ensure that sets inserted after the
@@ -328,8 +352,6 @@ public:
 
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
-
-	bool debug = true;
 };
 
 int main(int argc, char** argv) {
@@ -339,7 +361,7 @@ int main(int argc, char** argv) {
 	}
 
 	ParserGen parserGen(argv[1]);
-	parserGen.debug = false;
+	//parserGen.debug = false;
 	parserGen.get_terminals_and_productions();
 	parserGen.build_cc();
 }
