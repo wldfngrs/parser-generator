@@ -132,7 +132,6 @@ class ParserGen {
 				}
 				std::cout << "\n";
 			}
-			// default:
 		}
 	}
 
