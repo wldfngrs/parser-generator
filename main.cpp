@@ -88,13 +88,19 @@ class ParserGen {
 
 	void print_debug_info(ParseGenLvl pg_lvl) {
 		switch (pg_lvl) {
-		case TERMINALS:
-			// TODO: pretty print terminals in 8-column table.
+		case TERMINALS: {
+			// pretty print terminals in 8-column table.
 			std::cout << "\nExtracted Terminals\n===================\n";
+			auto col = 0;
 			for (auto& terminal : terminals) {
-				std::cout << terminal << "\n";
+				std::cout << terminal;
+				++col;
+				if (!(col % 8)) std::cout << "\n";
+				else if (col < terminals.size()) std::cout << ", ";
 			}
+			std::cout << "\n";
 			break;
+		}
 		case PRODUCTIONS:
 			std::cout << "\nExtracted Productions\n=====================\n";
 			for (auto& production : productions) {
