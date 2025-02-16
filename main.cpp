@@ -81,11 +81,11 @@ class ParserGen {
 		}
 	};
 
-	//struct PairHash {
-	//	size_t operator()(std::pair<size_t, std::string>& pair) const {
-	//		return std::hash<size_t>{}(pair.first) ^ std::hash<std::string>{}(pair.second);
-	//	}
-	//};
+	struct PairHash {
+		size_t operator()(const std::pair<size_t, std::string>& pair) const {
+			return std::hash<size_t>{}(pair.first) ^ std::hash<std::string>{}(pair.second);
+		}
+	};
 
 	void print_debug_info(ParseGenLvl pg_lvl) {
 		switch (pg_lvl) {
@@ -135,7 +135,7 @@ class ParserGen {
 		case CANONICAL_SET:
 			std::cout << "\nGenerated Canonical Set\n=======================\n";
 			for (auto& canonicalSet_i : canonicalCollection) {
-				std::cout << "C_" << canonicalSet_i.second.first << ":\n";
+				std::cout << "C_" << canonicalSet_i.second.state << ":\n";
 				for (auto& item : canonicalSet_i.first) {
 					std::cout << "[" << item.position << ", " << item.production[0] << " ->";
 					for (auto i = 1; i < item.production.size(); i++) {
@@ -233,10 +233,16 @@ class ParserGen {
 	std::string goal_lhs_symbol;
 	// Key: Set of items
 	// Value: marked/unmarked-ness of set, index of set]
-	std::unordered_map<std::unordered_set<Item, ItemHash>, std::pair<size_t, bool>, CanonicalCollectionHash> canonicalCollection;
+	struct CanonicalCollectionValue {
+		size_t state;
+		bool marked;
+	};
+	
+	std::unordered_map<std::unordered_set<Item, ItemHash>, CanonicalCollectionValue, CanonicalCollectionHash> canonicalCollection;
 	
 	// std::unordered_map<std::pair<size_t, TokenType>, Action, PairHash> actionTable;
-	// std::unordered_map<std::pair<size_t, std::string>, size_t, PairHash> gotoTable;
+	// std::unordered_map<std::pair<size_t, std::string>, Action, PairHash> actionTable;
+	std::unordered_map<std::pair<size_t, std::string>, size_t, PairHash> gotoTable;
 
 public:
 	bool debug = true;
@@ -353,9 +359,10 @@ public:
 		}
 		
 		auto number_of_unmarked_sets = 0;
-		auto set_index = 0;
+		size_t set_index = 0;
 		closure_function(canonicalSet_0);
-		canonicalCollection.emplace(canonicalSet_0, std::make_pair(set_index, false));
+		CanonicalCollectionValue ccv{ set_index, false };
+		canonicalCollection.emplace(canonicalSet_0, ccv);
 		
 		// count "unmarked" and keep looping until "unmarked" is equal
 		// to zero. That is, all available sets in canonicalCollection have
@@ -365,8 +372,8 @@ public:
 		++number_of_unmarked_sets;
 		while (number_of_unmarked_sets > 0) {
 			for (auto& canonicalSet_i : canonicalCollection) {
-				if (canonicalSet_i.second.second == false) {
-					canonicalSet_i.second.second = true;
+				if (canonicalSet_i.second.marked == false) {
+					canonicalSet_i.second.marked = true;
 					for (auto& item : canonicalSet_i.first) {
 						std::unordered_set<Item, ItemHash> new_set;
 						if (item.position >= item.production.size()) continue;
@@ -374,7 +381,8 @@ public:
 						
 						if (canonicalCollection.count(new_set) == 0) {
 							++set_index;
-							canonicalCollection.emplace(new_set, std::make_pair(set_index, false));
+							ccv = { set_index, false };
+							canonicalCollection.emplace(new_set, ccv);
 							++number_of_unmarked_sets;
 						}
 					}
@@ -396,7 +404,17 @@ public:
 	void build_tables() {
 		for (auto& canonicalSet_i : canonicalCollection) {
 			for (auto& item : canonicalSet_i.first) {
-				
+				;
+			}
+	
+			for (auto& non_term : non_terminals) {
+				std::unordered_set<Item, ItemHash> next_set;
+				goto_function(canonicalSet_i.first, non_term, next_set);
+				if (canonicalCollection.count(next_set)) {
+					auto next_state = canonicalCollection[next_set].state;
+					// add to goto_table that goto[i, non_term] ==> next_set_index
+					gotoTable.emplace(std::make_pair(canonicalSet_i.second.state, non_term), next_state);
+				}
 			}
 		}
 	}
@@ -412,5 +430,5 @@ int main(int argc, char** argv) {
 	// parserGen.debug = false;
 	parserGen.get_terminals_and_productions();
 	parserGen.build_cc();
-	// parserGen.build_tables();
+	parserGen.build_tables();
 }
