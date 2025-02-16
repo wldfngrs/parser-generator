@@ -8,18 +8,6 @@
 #include <unordered_set>
 #include <unordered_map>
 
-// enum Action {
-//		SHIFT,
-//		REDUCE,
-//		ACCEPT,
-//		ERROR,
-//	};
-// 
-// struct Action {
-//		ActionType type;
-//		size_t state;
-// };
-
 // std::stack<size_t> states {0};
 // std::stack<TokenType> tokens;.
 // std::stack<Statement> symbols;
@@ -87,6 +75,18 @@ class ParserGen {
 		}
 	};
 
+	enum ActionType {
+		SHIFT,
+		REDUCE,
+		ACCEPT,
+		ERROR,
+	};
+
+	struct Action {
+		ActionType type;
+		size_t state;
+	};
+
 	void print_debug_info(ParseGenLvl pg_lvl) {
 		switch (pg_lvl) {
 		case TERMINALS: {
@@ -107,7 +107,7 @@ class ParserGen {
 			std::cout << "\nExtracted Non-Terminals\n=======================\n";
 			auto col = 0;
 			for (auto& non_terminal : non_terminals) {
-				std::cout << non_terminal;
+				std::cout << non_terminal.first;
 				++col;
 				if (!(col % 8)) std::cout << "\n";
 				else if (col < non_terminals.size()) std::cout << ", ";
@@ -224,7 +224,8 @@ class ParserGen {
 	//std::unordered_map<std::vector<std::vector<std::string>>, std::string> rightmost_deriv;
 
 	std::unordered_set<std::string> terminals;
-	std::unordered_set<std::string> non_terminals;
+	std::unordered_map<std::string, size_t> non_terminals;
+	std::vector<std::string> non_terminals_vec;
 	std::unordered_map<std::string, std::string> first_cache;
 
 	std::string txt;
@@ -241,7 +242,7 @@ class ParserGen {
 	std::unordered_map<std::unordered_set<Item, ItemHash>, CanonicalCollectionValue, CanonicalCollectionHash> canonicalCollection;
 	
 	// std::unordered_map<std::pair<size_t, TokenType>, Action, PairHash> actionTable;
-	// std::unordered_map<std::pair<size_t, std::string>, Action, PairHash> actionTable;
+	std::unordered_map<std::pair<size_t, std::string>, Action, PairHash> actionTable;
 	std::unordered_map<std::pair<size_t, std::string>, size_t, PairHash> gotoTable;
 
 public:
@@ -259,6 +260,7 @@ public:
 		auto start_txt = 0;
 		std::string line;
 		size_t l_no = 1; // solely for error-reporting
+		auto grammar_rule_no = 0;
 		for (size_t i = 0; i < txt.length(); i++) {
 			if (txt[i] == '\n' || i == txt.length() - 1) {
 				line = std::string(txt, start_txt, i - start_txt + 1);
@@ -297,7 +299,8 @@ public:
 					std::string lhs = std::string(line, start, j++);
 					if (productions.size() == 0) goal_lhs_symbol = lhs;
 
-					non_terminals.emplace(lhs);
+					non_terminals.emplace(lhs, grammar_rule_no++);
+					non_terminals_vec.push_back(lhs);
 
 					// scan until the first letter, representing the rhs of a production.
 					while (!isAlpha(line[j])) {
@@ -348,7 +351,7 @@ public:
 		}
 
 		std::unordered_set<Item, ItemHash> canonicalSet_0;
-		auto goal = productions[goal_lhs_symbol];
+		auto& goal = productions[goal_lhs_symbol];
 		for (auto& production : goal) {
 			std::vector<std::string> beginItemProd;
 			beginItemProd.push_back(goal_lhs_symbol);
@@ -397,22 +400,51 @@ public:
 	}
 	
 	// TODO: the algorithm for build_cc() seems to suggest that the tables *could* be built
-	// within the routine. I'm not sure, and don't have the time or energy to prove this to 
-	// be workable. Instead, here's an implementation that seperates the build_cc() routine 
-	// from the build_table() routine, first. For my sanity, I just need to feel like I'm 
-	// making progress here.
+	// within the routine (i.e while building the canonicalCollection itself). However, 
+	// I'm not sure, and don't have the time or energy to prove this to be a workable solution.
+	// Instead, here's an implementation that seperates the build_cc() routine from the build_table()
+	// routine. For my sanity. I just need to feel like I'm making progress here.
 	void build_tables() {
 		for (auto& canonicalSet_i : canonicalCollection) {
 			for (auto& item : canonicalSet_i.first) {
-				;
+				if (item.position < item.production.size() &&
+					terminals.count(item.production[item.position]))
+				{
+					std::unordered_set<Item, ItemHash> next_set;
+					std::string terminal = item.production[item.position];
+					goto_function(canonicalSet_i.first, terminal, next_set);
+					if (canonicalCollection.count(next_set)) {
+						auto next_state = canonicalCollection[next_set].state;
+						// add to actionTable that action[i, item.production[item.position]] ==> shift (to) next_state
+						Action action{ SHIFT, next_state };
+						actionTable.emplace(std::make_pair(canonicalSet_i.second.state, terminal), action);
+					}
+				}
+				else if (item.position >= item.production.size()) {
+					if (item.lookahead == goal_production_lookahead_symbol) {
+						// if lookahead is "e_of"
+						if (item.production[0] == goal_lhs_symbol) {
+							// recall; for an accept action, the second 'state' member is irrelevant.
+							// I'd just use a 0 for literally no particular reason
+							Action action{ ACCEPT, 0 };
+							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, goal_production_lookahead_symbol), action);
+						}
+					}
+					else {
+						auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
+						// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
+						Action action{ REDUCE, grammar_rule_no };
+						actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+					}
+				}
 			}
 	
 			for (auto& non_term : non_terminals) {
 				std::unordered_set<Item, ItemHash> next_set;
-				goto_function(canonicalSet_i.first, non_term, next_set);
+				goto_function(canonicalSet_i.first, non_term.first, next_set);
 				if (canonicalCollection.count(next_set)) {
 					auto next_state = canonicalCollection[next_set].state;
-					// add to goto_table that goto[i, non_term] ==> next_set_index
+					// add to gotoTable that goto[i, non_term] ==> next_set_index
 					gotoTable.emplace(std::make_pair(canonicalSet_i.second.state, non_term), next_state);
 				}
 			}
