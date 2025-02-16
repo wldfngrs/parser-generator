@@ -150,9 +150,9 @@ class ParserGen {
 				else if (productions.count(symbol) == 1) {
 					// if rhs symbol is a non-terminal
 					// check if symbol is in "first" cache
-					if (firstCache.count(symbol) == 1) {
+					if (first_cache.count(symbol) == 1) {
 						// yes
-						first.emplace(firstCache[symbol]);
+						first.emplace(first_cache[symbol]);
 					}
 					else {
 						// no
@@ -161,7 +161,7 @@ class ParserGen {
 						for (auto& r : rhs) {
 							if (terminals.count(r[0]) == 1) {
 								first.emplace(r[0]);
-								firstCache[r[0]] = r[0];
+								first_cache[r[0]] = r[0];
 							}
 						}
 					}
@@ -211,7 +211,7 @@ class ParserGen {
 
 	std::unordered_set<std::string> terminals;
 	std::unordered_set<std::string> non_terminals;
-	std::unordered_map<std::string, std::string> firstCache;
+	std::unordered_map<std::string, std::string> first_cache;
 
 	std::string txt;
 	bool error = false;
@@ -376,13 +376,13 @@ public:
 	// be workable. Instead, here's an implementation that seperates the build_cc() routine 
 	// from the build_table() routine, first. For my sanity, I just need to feel like I'm 
 	// making progress here.
-	//void build_tables() {
-	//	for (auto& canonicalSet_i : canonicalCollection) {
-	//		for (auto& item : canonicalSet_i.first) {
-	//
-	//		}
-	//	}
-	//}
+	void build_tables() {
+		for (auto& canonicalSet_i : canonicalCollection) {
+			for (auto& item : canonicalSet_i.first) {
+				
+			}
+		}
+	}
 };
 
 int main(int argc, char** argv) {
