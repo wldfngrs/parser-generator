@@ -38,6 +38,7 @@ static bool isAlpha(char c) {
 class ParserGen {
 	enum ParseGenLvl {
 		TERMINALS,
+		NON_TERMINALS,
 		PRODUCTIONS,
 		CANONICAL_SET,
 	};
@@ -97,6 +98,19 @@ class ParserGen {
 				++col;
 				if (!(col % 8)) std::cout << "\n";
 				else if (col < terminals.size()) std::cout << ", ";
+			}
+			std::cout << "\n";
+			break;
+		}
+		case NON_TERMINALS: {
+			// pretty print non-terminals in 8-column table.
+			std::cout << "\nExtracted Non-Terminals\n=======================\n";
+			auto col = 0;
+			for (auto& non_terminal : non_terminals) {
+				std::cout << non_terminal;
+				++col;
+				if (!(col % 8)) std::cout << "\n";
+				else if (col < non_terminals.size()) std::cout << ", ";
 			}
 			std::cout << "\n";
 			break;
@@ -277,6 +291,8 @@ public:
 					std::string lhs = std::string(line, start, j++);
 					if (productions.size() == 0) goal_lhs_symbol = lhs;
 
+					non_terminals.emplace(lhs);
+
 					// scan until the first letter, representing the rhs of a production.
 					while (!isAlpha(line[j])) {
 						j++;
@@ -314,6 +330,7 @@ public:
 
 		if (debug) {
 			print_debug_info(TERMINALS);
+			print_debug_info(NON_TERMINALS);
 			print_debug_info(PRODUCTIONS);
 		}
 	}
