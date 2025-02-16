@@ -8,8 +8,21 @@
 #include <unordered_set>
 #include <unordered_map>
 
-// std::map<std::pair<std::string, Action>, size_t> actionTable;
-// std::map<std::pair<size_t, std::string>, size_t> gotoTable;
+// enum Action {
+//		SHIFT,
+//		REDUCE,
+//		ACCEPT,
+//		ERROR,
+//	};
+// 
+// struct Action {
+//		ActionType type;
+//		size_t state;
+// };
+
+// std::stack<size_t> states {0};
+// std::stack<TokenType> tokens;.
+// std::stack<Statement> symbols;
 
 // Interpret 'next' differently. 
 // SHIFT action interprets 'next' variable as holding the
@@ -23,29 +36,10 @@ static bool isAlpha(char c) {
 }
 
 class ParserGen {
-	enum Action {
-		SHIFT,
-		REDUCE,
-		ACCEPT,
-		ERROR,
-	};
-
 	enum ParseGenLvl {
 		TERMINALS,
 		PRODUCTIONS,
 		CANONICAL_SET,
-	};
-
-	struct ActionTableInput {
-		// First string: Terminal,
-		// Second string: Action,
-		std::array<std::string, 2> handle;
-		size_t next;
-	};
-
-	struct GotoTableInput {
-		std::string nonTerminal;
-		size_t next;
 	};
 
 	struct Item {
@@ -75,7 +69,7 @@ class ParserGen {
 		}
 	};
 
-	struct canonicalCollectionHash {
+	struct CanonicalCollectionHash {
 		size_t operator()(const std::unordered_set<Item, ItemHash>& c) const {
 			size_t out = 1;
 			for (auto& item : c) {
@@ -85,6 +79,12 @@ class ParserGen {
 			return out;
 		}
 	};
+
+	//struct PairHash {
+	//	size_t operator()(std::pair<size_t, std::string>& pair) const {
+	//		return std::hash<size_t>{}(pair.first) ^ std::hash<std::string>{}(pair.second);
+	//	}
+	//};
 
 	void print_debug_info(ParseGenLvl pg_lvl) {
 		switch (pg_lvl) {
@@ -120,9 +120,8 @@ class ParserGen {
 			break;
 		case CANONICAL_SET:
 			std::cout << "\nGenerated Canonical Set\n=======================\n";
-			auto count = 0;
 			for (auto& canonicalSet_i : canonicalCollection) {
-				std::cout << "C_" << count++ << ":\n";
+				std::cout << "C_" << canonicalSet_i.second.first << ":\n";
 				for (auto& item : canonicalSet_i.first) {
 					std::cout << "[" << item.position << ", " << item.production[0] << " ->";
 					for (auto i = 1; i < item.production.size(); i++) {
@@ -208,16 +207,22 @@ class ParserGen {
 	// "List" : {{"List", "Pair"}, {"Pair"}}
 	// "Pair" : {{"t_lp", "Pair", "t_rp"}, {"t_lp", "t_rp"}}
 	std::unordered_map<std::string, std::vector<std::vector<std::string>>> productions;
-	std::unordered_set<std::string> terminals;
-	std::unordered_map<std::string, std::string> firstCache;
+	//std::unordered_map<std::vector<std::vector<std::string>>, std::string> rightmost_deriv;
 
-	std::vector<ActionTableInput> actionTable;
-	std::vector<GotoTableInput> gotoTable;
+	std::unordered_set<std::string> terminals;
+	std::unordered_set<std::string> non_terminals;
+	std::unordered_map<std::string, std::string> firstCache;
 
 	std::string txt;
 	bool error = false;
-	std::string goal_terminate_symbol;
-	std::unordered_map<std::unordered_set<Item, ItemHash>, bool, canonicalCollectionHash> canonicalCollection;
+	std::string goal_production_lookahead_symbol;
+	std::string goal_lhs_symbol;
+	// Key: Set of items
+	// Value: marked/unmarked-ness of set, index of set]
+	std::unordered_map<std::unordered_set<Item, ItemHash>, std::pair<size_t, bool>, CanonicalCollectionHash> canonicalCollection;
+	
+	// std::unordered_map<std::pair<size_t, TokenType>, Action, PairHash> actionTable;
+	// std::unordered_map<std::pair<size_t, std::string>, size_t, PairHash> gotoTable;
 
 public:
 	bool debug = true;
@@ -252,8 +257,10 @@ public:
 							break;
 						}
 					}
+
+					// if space is found, don't parse tokens?
 					
-					if (l_no == 1) goal_terminate_symbol = std::string(line, 0, line.size() - 1);
+					if (l_no == 1) goal_production_lookahead_symbol = std::string(line, 0, line.size() - 1);
 					terminals.emplace(std::string(line, 0, line.size() - 1));
 				}
 				else if (isAlpha(line[0])) {
@@ -268,6 +275,7 @@ public:
 
 					// lhs of production has been scanned
 					std::string lhs = std::string(line, start, j++);
+					if (productions.size() == 0) goal_lhs_symbol = lhs;
 
 					// scan until the first letter, representing the rhs of a production.
 					while (!isAlpha(line[j])) {
@@ -317,19 +325,20 @@ public:
 		}
 
 		std::unordered_set<Item, ItemHash> canonicalSet_0;
-		auto goal = productions.begin();
-		for (auto& production : (*goal).second) {
+		auto goal = productions[goal_lhs_symbol];
+		for (auto& production : goal) {
 			std::vector<std::string> beginItemProd;
-			beginItemProd.push_back((*goal).first);
+			beginItemProd.push_back(goal_lhs_symbol);
 			for (auto& symbol : production) {
 				beginItemProd.push_back(symbol);
 			}
-			canonicalSet_0.emplace(1, beginItemProd, goal_terminate_symbol);
+			canonicalSet_0.emplace(1, beginItemProd, goal_production_lookahead_symbol);
 		}
 		
 		auto number_of_unmarked_sets = 0;
+		auto set_index = 0;
 		closure_function(canonicalSet_0);
-		canonicalCollection.emplace(canonicalSet_0, false);
+		canonicalCollection.emplace(canonicalSet_0, std::make_pair(set_index, false));
 		
 		// count "unmarked" and keep looping until "unmarked" is equal
 		// to zero. That is, all available sets in canonicalCollection have
@@ -339,14 +348,18 @@ public:
 		++number_of_unmarked_sets;
 		while (number_of_unmarked_sets > 0) {
 			for (auto& canonicalSet_i : canonicalCollection) {
-				if (canonicalSet_i.second == false) {
-					canonicalSet_i.second = true;
+				if (canonicalSet_i.second.second == false) {
+					canonicalSet_i.second.second = true;
 					for (auto& item : canonicalSet_i.first) {
 						std::unordered_set<Item, ItemHash> new_set;
 						if (item.position >= item.production.size()) continue;
 						goto_function(canonicalSet_i.first, item.production[item.position], new_set);
-						canonicalCollection.emplace(new_set, false);
-						++number_of_unmarked_sets;
+						
+						if (canonicalCollection.count(new_set) == 0) {
+							++set_index;
+							canonicalCollection.emplace(new_set, std::make_pair(set_index, false));
+							++number_of_unmarked_sets;
+						}
 					}
 				}
 				else {
@@ -357,6 +370,19 @@ public:
 
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
+	
+	// TODO: the algorithm for build_cc() seems to suggest that the tables *could* be built
+	// within the routine. I'm not sure, and don't have the time or energy to prove this to 
+	// be workable. Instead, here's an implementation that seperates the build_cc() routine 
+	// from the build_table() routine, first. For my sanity, I just need to feel like I'm 
+	// making progress here.
+	//void build_tables() {
+	//	for (auto& canonicalSet_i : canonicalCollection) {
+	//		for (auto& item : canonicalSet_i.first) {
+	//
+	//		}
+	//	}
+	//}
 };
 
 int main(int argc, char** argv) {
@@ -366,7 +392,8 @@ int main(int argc, char** argv) {
 	}
 
 	ParserGen parserGen(argv[1]);
-	//parserGen.debug = false;
+	// parserGen.debug = false;
 	parserGen.get_terminals_and_productions();
 	parserGen.build_cc();
+	// parserGen.build_tables();
 }

@@ -1,9 +1,9 @@
-t_eof
-t_lp
-t_rp
+t_EOF
+t_LP
+t_RP
 
 Goal > List
 List > List Pair
 List > Pair
-Pair > t_lp Pair t_rp
-Pair > t_lp t_rp
+Pair > t_LP Pair t_RP
+Pair > t_LP t_RP
