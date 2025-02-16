@@ -159,14 +159,14 @@ class ParserGen {
 				std::string symbol = item.production[item.position + 1];
 				if (terminals.count(symbol) == 1) {
 					// if rhs symbol is a terminal
-					first.emplace(symbol);
+					first.insert(symbol);
 				}
 				else if (productions.count(symbol) == 1) {
 					// if rhs symbol is a non-terminal
 					// check if symbol is in "first" cache
 					if (first_cache.count(symbol) == 1) {
 						// yes
-						first.emplace(first_cache[symbol]);
+						first.insert(first_cache[symbol]);
 					}
 					else {
 						// no
@@ -174,7 +174,7 @@ class ParserGen {
 
 						for (auto& r : rhs) {
 							if (terminals.count(r[0]) == 1) {
-								first.emplace(r[0]);
+								first.insert(r[0]);
 								first_cache[r[0]] = r[0];
 							}
 						}
@@ -183,7 +183,7 @@ class ParserGen {
 			}
 
 			if (first.empty()) {
-				first.emplace(item.lookahead);
+				first.insert(item.lookahead);
 			}
 
 			// Rest of closure algorithm
@@ -283,7 +283,7 @@ public:
 					// if space is found, don't parse tokens?
 					
 					if (l_no == 1) goal_production_lookahead_symbol = std::string(line, 0, line.size() - 1);
-					terminals.emplace(std::string(line, 0, line.size() - 1));
+					terminals.emplace(line, 0, line.size() - 1);
 				}
 				else if (isAlpha(line[0])) {
 					// if non-terminal. That is, production
@@ -445,7 +445,7 @@ public:
 				if (canonicalCollection.count(next_set)) {
 					auto next_state = canonicalCollection[next_set].state;
 					// add to gotoTable that goto[i, non_term] ==> next_set_index
-					gotoTable.emplace(std::make_pair(canonicalSet_i.second.state, non_term), next_state);
+					gotoTable.emplace(std::make_pair(canonicalSet_i.second.state, non_term.first), next_state);
 				}
 			}
 		}
