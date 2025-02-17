@@ -149,7 +149,7 @@ class ParserGen {
 			}
 			break;
 		case ACTION_TABLE:
-			std::cout << "\nOutput Action Table\n===================\n";
+			std::cout << "\nAction Table\n============\n";
 			for (auto& entry : actionTable) {
 				std::cout << "[" << entry.first.first << ", " << entry.first.second << "] > ";
 				switch (entry.second.type) {
@@ -166,7 +166,7 @@ class ParserGen {
 			}
 			break;
 		case GOTO_TABLE:
-			std::cout << "\nOutput Goto Table\n=================\n";
+			std::cout << "\nGoto Table\n==========\n";
 			for (auto& entry : gotoTable) {
 				std::cout << "[" << entry.first.first << ", " << entry.first.second << "] > " << entry.second << "\n";
 			}
