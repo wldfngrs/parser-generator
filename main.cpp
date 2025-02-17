@@ -29,6 +29,8 @@ class ParserGen {
 		NON_TERMINALS,
 		PRODUCTIONS,
 		CANONICAL_SET,
+		ACTION_TABLE,
+		GOTO_TABLE
 	};
 
 	struct Item {
@@ -145,6 +147,30 @@ class ParserGen {
 				}
 				std::cout << "\n";
 			}
+			break;
+		case ACTION_TABLE:
+			std::cout << "\nOutput Action Table\n===================\n";
+			for (auto& entry : actionTable) {
+				std::cout << "[" << entry.first.first << ", " << entry.first.second << "] > ";
+				switch (entry.second.type) {
+				case SHIFT:
+					std::cout << "SHIFT " << entry.second.state << "\n";
+					break;
+				case REDUCE:
+					std::cout << "REDUCE " << entry.second.state << "\n";
+					break;
+				case ACCEPT:
+					std::cout << "ACCEPT\n";
+					break;
+				}
+			}
+			break;
+		case GOTO_TABLE:
+			std::cout << "\nOutput Goto Table\n=================\n";
+			for (auto& entry : gotoTable) {
+				std::cout << "[" << entry.first.first << ", " << entry.first.second << "] > " << entry.second << "\n";
+			}
+			break;
 		}
 	}
 
@@ -284,6 +310,7 @@ public:
 					
 					if (l_no == 1) goal_production_lookahead_symbol = std::string(line, 0, line.size() - 1);
 					terminals.emplace(line, 0, line.size() - 1);
+					l_no++;
 				}
 				else if (isAlpha(line[0])) {
 					// if non-terminal. That is, production
@@ -299,8 +326,10 @@ public:
 					std::string lhs = std::string(line, start, j++);
 					if (productions.size() == 0) goal_lhs_symbol = lhs;
 
-					non_terminals.emplace(lhs, grammar_rule_no++);
-					non_terminals_vec.push_back(lhs);
+					if (lhs != goal_lhs_symbol) {
+						non_terminals.emplace(lhs, grammar_rule_no++);
+						non_terminals_vec.push_back(lhs);
+					}
 
 					// scan until the first letter, representing the rhs of a production.
 					while (!isAlpha(line[j])) {
@@ -325,6 +354,7 @@ public:
 					}
 
 					productions[lhs].push_back(rhs);
+					l_no++;
 				}
 				else if (line == "\n") {
 					l_no++;
@@ -405,6 +435,11 @@ public:
 	// Instead, here's an implementation that seperates the build_cc() routine from the build_table()
 	// routine. For my sanity. I just need to feel like I'm making progress here.
 	void build_tables() {
+		if (error) {
+			std::cout << "\n\nFatal error in grammar definition. Parser-Generator terminated early.\n";
+			return;
+		}
+
 		for (auto& canonicalSet_i : canonicalCollection) {
 			for (auto& item : canonicalSet_i.first) {
 				if (item.position < item.production.size() &&
@@ -430,7 +465,7 @@ public:
 							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, goal_production_lookahead_symbol), action);
 						}
 					}
-					else {
+					else if (non_terminals.count(item.production[item.position - 1])) {
 						auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
 						// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
 						Action action{ REDUCE, grammar_rule_no };
@@ -449,6 +484,11 @@ public:
 				}
 			}
 		}
+
+		if (debug) {
+			print_debug_info(ACTION_TABLE);
+			print_debug_info(GOTO_TABLE);
+		}
 	}
 };
 
@@ -464,3 +504,5 @@ int main(int argc, char** argv) {
 	parserGen.build_cc();
 	parserGen.build_tables();
 }
+
+// TODO: FIX non_terminals_vec(). It contains repeated elements.
