@@ -464,10 +464,18 @@ public:
 							Action action{ ACCEPT, 0 };
 							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, goal_production_lookahead_symbol), action);
 						}
+						else {
+							//auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
+							// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
+							auto grammar_rule_no = 0;
+							Action action{ REDUCE, grammar_rule_no };
+							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+						}
 					}
-					else if (non_terminals.count(item.production[item.position - 1])) {
-						auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
+					else {
+						// auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
 						// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
+						auto grammar_rule_no = 0;
 						Action action{ REDUCE, grammar_rule_no };
 						actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
 					}
