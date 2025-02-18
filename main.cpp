@@ -109,7 +109,7 @@ class ParserGen {
 			std::cout << "\nExtracted Non-Terminals\n=======================\n";
 			auto col = 0;
 			for (auto& non_terminal : non_terminals) {
-				std::cout << non_terminal.first;
+				std::cout << non_terminal;
 				++col;
 				if (!(col % 8)) std::cout << "\n";
 				else if (col < non_terminals.size()) std::cout << ", ";
@@ -122,13 +122,9 @@ class ParserGen {
 			for (auto& production : productions) {
 				std::cout << production.first << " > ";
 
-				std::vector<std::vector<std::string>> values = production.second;
+				std::vector<std::string> values = production.second;
 				for (auto& value : values) {
-					std::cout << "{ ";
-					for (auto& v : value) {
-						std::cout << v << " ";
-					}
-					std::cout << "} ";
+					std::cout << "{ " << value << " } ";
 				}
 
 				std::cout << "\n";
@@ -196,12 +192,18 @@ class ParserGen {
 					}
 					else {
 						// no
-						std::vector<std::vector<std::string>> rhs = productions[symbol];
+						std::vector<std::string> rhs = productions[symbol];
 
 						for (auto& r : rhs) {
-							if (terminals.count(r[0]) == 1) {
-								first.insert(r[0]);
-								first_cache[r[0]] = r[0];
+							for (auto i = 0; i < r.size(); i++) {
+								if (r[i] == ' ') {
+									std::string temp = std::string(r, 0, i);
+									if (terminals.count(temp) == 1) {
+										first.emplace(temp);
+										first_cache[temp] = temp;
+										break;
+									}
+								}
 							}
 						}
 					}
@@ -213,13 +215,20 @@ class ParserGen {
 			}
 
 			// Rest of closure algorithm
-			std::vector<std::vector<std::string>> rhs = productions[C];
+			std::vector<std::string> rhs = productions[C];
 
 			for (auto& prod : rhs) {
 				std::vector<std::string> cItemProd{ C };
-				for (auto& p : prod) {
-					cItemProd.push_back(p);
+
+				auto start = 0;
+				auto i = 0;
+				for (; i < prod.size(); i++) {
+					if (prod[i] == ' ') {
+						cItemProd.push_back(std::string(prod, start, i - start));
+						start = i + 1;
+					}
 				}
+				cItemProd.push_back(std::string(prod, start, i - start));
 
 				for (auto& b : first) {
 					canonicalSet_i.emplace(1, cItemProd, b);
@@ -242,16 +251,15 @@ class ParserGen {
 		closure_function(moved);
 	}
 
-	// 'string' as key, 'vector of vectors of strings' as value
+	// 'string' as key, 'vector of strings' as value
 	// Example key-value pairing:
-	// "List" : {{"List", "Pair"}, {"Pair"}}
-	// "Pair" : {{"t_lp", "Pair", "t_rp"}, {"t_lp", "t_rp"}}
-	std::unordered_map<std::string, std::vector<std::vector<std::string>>> productions;
+	// "List" : {{"List Pair"}, {"Pair"}}
+	// "Pair" : {{"t_lp Pair t_rp"}, {"t_lp t_rp"}}
+	std::unordered_map<std::string, std::vector<std::string>> productions;
 	//std::unordered_map<std::vector<std::vector<std::string>>, std::string> rightmost_deriv;
 
 	std::unordered_set<std::string> terminals;
-	std::unordered_map<std::string, size_t> non_terminals;
-	std::vector<std::string> non_terminals_vec;
+	std::unordered_set<std::string> non_terminals;
 	std::unordered_map<std::string, std::string> first_cache;
 
 	std::string txt;
@@ -314,8 +322,8 @@ public:
 				}
 				else if (isAlpha(line[0])) {
 					// if non-terminal. That is, production
-					auto start = 0;
-					auto j = 0;
+					size_t start = 0;
+					size_t j = 0;
 
 					while ((line[j] != ' ' || line[j] != '\t') &&
 						isAlpha(line[j])) {
@@ -327,29 +335,25 @@ public:
 					if (productions.size() == 0) goal_lhs_symbol = lhs;
 
 					if (lhs != goal_lhs_symbol) {
-						non_terminals.emplace(lhs, grammar_rule_no++);
-						non_terminals_vec.push_back(lhs);
+						non_terminals.emplace(lhs);
+						//non_terminals_vec.push_back(lhs);
 					}
 
 					// scan until the first letter, representing the rhs of a production.
+					// TODO: include error handling for when no 'alpha' is found. eg: newline instead.
 					while (!isAlpha(line[j])) {
 						j++;
 					}
 
 					start = j;
-					std::vector<std::string> rhs;
+					//std::vector<std::string> rhs;
+					std::string rhs;
 					for (auto k = j; k < line.size(); k++) {
-						if (line[k] == ' ' ||
-							line[k] == '\t' ||
-							line[k] == '\n')
-						{
-							std::string value = std::string(line, start, k - start);
-							if (value != "") rhs.push_back(value);
-							start = k + 1;
+						if (line[k] == '\n') {
+							rhs.append(line, start, k - start);
 						}
 						else if (k == line.size() - 1) {
-							std::string value = std::string(line, start, k - start + 1);
-							if (value != "") rhs.push_back(value);
+							rhs.append(line, start, k - start + 1);
 						}
 					}
 
@@ -385,9 +389,7 @@ public:
 		for (auto& production : goal) {
 			std::vector<std::string> beginItemProd;
 			beginItemProd.push_back(goal_lhs_symbol);
-			for (auto& symbol : production) {
-				beginItemProd.push_back(symbol);
-			}
+			beginItemProd.push_back(production);
 			canonicalSet_0.emplace(1, beginItemProd, goal_production_lookahead_symbol);
 		}
 		
@@ -457,7 +459,6 @@ public:
 				}
 				else if (item.position >= item.production.size()) {
 					if (item.lookahead == goal_production_lookahead_symbol) {
-						// if lookahead is "e_of"
 						if (item.production[0] == goal_lhs_symbol) {
 							// recall; for an accept action, the second 'state' member is irrelevant.
 							// I'd just use a 0 for literally no particular reason
@@ -465,7 +466,6 @@ public:
 							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, goal_production_lookahead_symbol), action);
 						}
 						else {
-							//auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
 							// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
 							auto grammar_rule_no = 0;
 							Action action{ REDUCE, grammar_rule_no };
@@ -484,11 +484,11 @@ public:
 	
 			for (auto& non_term : non_terminals) {
 				std::unordered_set<Item, ItemHash> next_set;
-				goto_function(canonicalSet_i.first, non_term.first, next_set);
+				goto_function(canonicalSet_i.first, non_term, next_set);
 				if (canonicalCollection.count(next_set)) {
 					auto next_state = canonicalCollection[next_set].state;
 					// add to gotoTable that goto[i, non_term] ==> next_set_index
-					gotoTable.emplace(std::make_pair(canonicalSet_i.second.state, non_term.first), next_state);
+					gotoTable.emplace(std::make_pair(canonicalSet_i.second.state, non_term), next_state);
 				}
 			}
 		}
@@ -507,6 +507,18 @@ int main(int argc, char** argv) {
 	}
 
 	ParserGen parserGen(argv[1]);
+
+	// TODO: define what a valid grammar_txt input is, and properly validata
+	// the correctness of the input grammar file in get_terminals_and_production()
+	// That is, if the program continues to build_cc(), then the grammar_txt input is
+	// correctly defined according to specification. Else, it should never get to
+	// build_cc() function.
+
+	// TODO: Take out error checking from the function themselves and place it right after
+	// the call to get_terminals_and_productions. That is the only place an error due to the user
+	// is expected afterall. Beyond that, as earlier stated, if the program progresses past that stage,
+	// the parser-generator should not produce an incorrect grammar whatsoever.
+
 	// parserGen.debug = false;
 	parserGen.get_terminals_and_productions();
 	parserGen.build_cc();
