@@ -2,6 +2,7 @@
 #include <sstream>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <map>
 #include <vector>
 #include <array>
@@ -18,9 +19,13 @@
 // REDUCE action interprets 'next' as holding the grammar rule
 // the reduction will be following.
 
-static bool isAlpha(char c) {
+static bool is_alpha(char c) {
 	return (c >= 'a' && c <= 'z') ||
 		(c >= 'A' && c <= 'Z');
+}
+
+static bool is_whitespace(char c) {
+	return (c == ' ' || c == '\r' || c == '\t');
 }
 
 class ParserGen {
@@ -93,7 +98,7 @@ class ParserGen {
 		switch (pg_lvl) {
 		case TERMINALS: {
 			// pretty print terminals in 8-column table.
-			std::cout << "\nExtracted Terminals\n===================\n";
+			std::cout << "Extracted Terminals\n===================\n";
 			auto col = 0;
 			for (auto& terminal : terminals) {
 				std::cout << terminal;
@@ -262,8 +267,7 @@ class ParserGen {
 	std::unordered_set<std::string> non_terminals;
 	std::unordered_map<std::string, std::string> first_cache;
 
-	std::string txt;
-	bool error = false;
+	std::string grammar_txt;
 	std::string goal_production_lookahead_symbol;
 	std::string goal_lhs_symbol;
 	// Key: Set of items
@@ -281,97 +285,114 @@ class ParserGen {
 
 public:
 	bool debug = true;
+	bool error_in_get_terminals_and_productions = false;
 
 	ParserGen(std::string pathToGrammar) {
 		std::stringstream ss;
 		std::ifstream file(pathToGrammar, std::ios_base::in);
 
 		ss << file.rdbuf();
-		txt = ss.str();
+		grammar_txt = ss.str();
 	}
 
 	void get_terminals_and_productions() {
 		auto start_txt = 0;
 		std::string line;
 		size_t l_no = 1; // solely for error-reporting
-		auto grammar_rule_no = 0;
-		for (size_t i = 0; i < txt.length(); i++) {
-			if (txt[i] == '\n' || i == txt.length() - 1) {
-				line = std::string(txt, start_txt, i - start_txt + 1);
+		bool scanning_terminals = true;
+		bool scanning_productions = false;
+
+		for (size_t i = 0; i < grammar_txt.length(); i++) {
+			if (grammar_txt[i] == '\n' || i == grammar_txt.length() - 1) {
+				line = std::string(grammar_txt, start_txt, i - start_txt);
 				start_txt = i + 1;
 
-				// if terminal
-				if (line[0] == 't' && line[1] == '_') {
-					// ensure that the token declarations do not contain whitespace.
-					auto j = 0;
-					while (j++ < line.size()) {
-						if (line[j] == ' ' ||
-							line[j] == '\t' ||
-							line[j] == '\r') {
-							std::cout << "Error at [" << l_no << "]: 'token' declarations shouldn't include spaces!\n";
-							error = true;
-							break;
+				if (scanning_terminals) {
+					if (line[0] == 't' && line[1] == '_') {
+						// ensure that the token declarations do not contain whitespace.
+						auto j = 2;
+						while (j++ < line.size()) {
+							if (is_whitespace(line[j])) {
+								error_in_get_terminals_and_productions = true;
+								std::cout << "Error: Terminal symbol declarations shouldn't include whitespace(s).\n"
+									<< "[Line " << l_no << "]: " << line << "\n\n";
+								break;
+							}
 						}
+
+						if (l_no == 1) goal_production_lookahead_symbol = std::string(line, 0, line.size());
+						terminals.emplace(line, 0, line.size());
+					}
+					else if (line == "") {
+						scanning_terminals = false;
+						scanning_productions = true;
+					}
+					else {
+						error_in_get_terminals_and_productions = true;
+						std::cout << "Error: Terminal symbols must be declared with a 't_' prefix!\n"
+							<< "[Line " << l_no++ << "]: " << line << "\n\n";
+					}
+				}
+				else if (scanning_productions) {
+					if (line[0] == 't' && line[1] == '_') {
+						error_in_get_terminals_and_productions = true;
+						std::cout << "Error: Terminal symbols ('t_' prefix) cannot be on the LHS of a production rule\n"
+							<< "[Line " << l_no++ << "]: " << line << "\n\n";
+						continue;
+					}
+					else if (line == "") {
+						l_no++;
+						continue;
 					}
 
-					// if space is found, don't parse tokens?
-					
-					if (l_no == 1) goal_production_lookahead_symbol = std::string(line, 0, line.size() - 1);
-					terminals.emplace(line, 0, line.size() - 1);
-					l_no++;
-				}
-				else if (isAlpha(line[0])) {
-					// if non-terminal. That is, production
 					size_t start = 0;
 					size_t j = 0;
 
-					while ((line[j] != ' ' || line[j] != '\t') &&
-						isAlpha(line[j])) {
-						j++;
-					}
+					while (!is_whitespace(line[j])) { j++; }
 
-					// lhs of production has been scanned
-					std::string lhs = std::string(line, start, j++);
+					// valid lhs of production has been scanned
+					std::string lhs = std::string(line, start, j);
 					if (productions.size() == 0) goal_lhs_symbol = lhs;
+					non_terminals.emplace(lhs);
 
-					if (lhs != goal_lhs_symbol) {
-						non_terminals.emplace(lhs);
-						//non_terminals_vec.push_back(lhs);
-					}
+					start = j;  j += 3;
+					std::string delim = std::string(line, start, j - start);
 
-					// scan until the first letter, representing the rhs of a production.
-					// TODO: include error handling for when no 'alpha' is found. eg: newline instead.
-					while (!isAlpha(line[j])) {
-						j++;
+					if (delim != " > ") {
+						error_in_get_terminals_and_productions = true;
+						std::cout << "Error: Expected ' > ' delimiter between LHS and RHS of production rule\n"
+							<< "[Line " << l_no++ << "]: " << line << "\n\n";
+						continue;
 					}
 
 					start = j;
-					//std::vector<std::string> rhs;
-					std::string rhs;
-					for (auto k = j; k < line.size(); k++) {
-						if (line[k] == '\n') {
-							rhs.append(line, start, k - start);
+					// ensure that only a single whitespace between consecutive symbols
+					auto whitespace_count = 0;
+					for (; j < line.size(); j++) {
+						if (is_whitespace(line[j])) {
+							whitespace_count++;
+							if (whitespace_count > 1) {
+								error_in_get_terminals_and_productions = true;
+								std::cout << "Error: Grammar production rhs should not contain more than one whitespace between grammar symbols.\n"
+									<< "[Line " << l_no << "]: " << line << "\n\n";
+								break;
+							}
 						}
-						else if (k == line.size() - 1) {
-							rhs.append(line, start, k - start + 1);
+						else {
+							whitespace_count = 0;
 						}
 					}
-
-					productions[lhs].push_back(rhs);
-					l_no++;
+					
+					if (whitespace_count == 0) {
+						std::string rhs(line, start, line.size() - start);
+						productions[lhs].push_back(rhs);
+					}
 				}
-				else if (line == "\n") {
-					l_no++;
-				}
-				else {
-					// error in grammar_txt
-					std::cout << "Error at line [" << l_no << "]: Wrongly specified grammar. Review the guide to properly specifying grammar for the Parser-Generator.\n";
-					error = true;
-				}
+				l_no++;
 			}
 		}
 
-		if (debug) {
+		if (debug && !error_in_get_terminals_and_productions) {
 			print_debug_info(TERMINALS);
 			print_debug_info(NON_TERMINALS);
 			print_debug_info(PRODUCTIONS);
@@ -379,11 +400,6 @@ public:
 	}
 
 	void build_cc() {
-		if (error) {
-			std::cout << "\n\nFatal error in grammar definition. Parser-Generator terminated early.\n";
-			return;
-		}
-
 		std::unordered_set<Item, ItemHash> canonicalSet_0;
 		auto& goal = productions[goal_lhs_symbol];
 		for (auto& production : goal) {
@@ -437,11 +453,6 @@ public:
 	// Instead, here's an implementation that seperates the build_cc() routine from the build_table()
 	// routine. For my sanity. I just need to feel like I'm making progress here.
 	void build_tables() {
-		if (error) {
-			std::cout << "\n\nFatal error in grammar definition. Parser-Generator terminated early.\n";
-			return;
-		}
-
 		for (auto& canonicalSet_i : canonicalCollection) {
 			for (auto& item : canonicalSet_i.first) {
 				if (item.position < item.production.size() &&
@@ -508,19 +519,14 @@ int main(int argc, char** argv) {
 
 	ParserGen parserGen(argv[1]);
 
-	// TODO: define what a valid grammar_txt input is, and properly validata
-	// the correctness of the input grammar file in get_terminals_and_production()
-	// That is, if the program continues to build_cc(), then the grammar_txt input is
-	// correctly defined according to specification. Else, it should never get to
-	// build_cc() function.
-
-	// TODO: Take out error checking from the function themselves and place it right after
-	// the call to get_terminals_and_productions. That is the only place an error due to the user
-	// is expected afterall. Beyond that, as earlier stated, if the program progresses past that stage,
-	// the parser-generator should not produce an incorrect grammar whatsoever.
-
 	// parserGen.debug = false;
 	parserGen.get_terminals_and_productions();
+
+	if (parserGen.error_in_get_terminals_and_productions) {
+		std::cout << "Fatal error in grammar definition. Parser-Generator terminated early.\n";
+		return -1;
+	}
+
 	parserGen.build_cc();
 	parserGen.build_tables();
 }
