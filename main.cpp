@@ -62,9 +62,7 @@ class ParserGen {
 			str(t_term), precedence(prec), associativity(assoc) {}
 
 		bool operator==(const Terminal& other) const {
-			return str == other.str &&
-				associativity == other.associativity &&
-				precedence == other.precedence;
+			return str == other.str;
 		}
 	};
 
@@ -327,7 +325,8 @@ public:
 
 		for (size_t i = 0; i < grammar_txt.length(); i++) {
 			if (grammar_txt[i] == '\n' || i == grammar_txt.length() - 1) {
-				line = std::string(grammar_txt, start_txt, i - start_txt);
+				if (i == grammar_txt.length() - 1) line = std::string(grammar_txt, start_txt, i - start_txt + 1);
+				else line = std::string(grammar_txt, start_txt, i - start_txt);
 				start_txt = i + 1;
 
 				if (parsing_terminals) {
@@ -375,6 +374,8 @@ public:
 										<< "[Line " << l_no << "]: " << line << "\n\n";
 							continue;
 						}
+
+						if (l_no == 1) goal_production_lookahead_symbol = term_info[0];
 					}
 					else if (line == "") {
 						parsing_terminals = false;
@@ -509,10 +510,11 @@ public:
 		for (auto& canonicalSet_i : canonicalCollection) {
 			for (auto& item : canonicalSet_i.first) {
 				// Checking the condition for the SHIFT action first, ensures that in the possible case 
-				// of a SHIFT-REDUCE conflict the parser-generator favors the SHIFT action.
+				// of a base SHIFT-REDUCE conflict the parser-generator favors the SHIFT action.
 				if (item.position < item.production.size() &&
 					terminals.count(Terminal(item.production[item.position], 0, "n")))
 				{
+					// for SHIFT-REDUCE conflicts that require precedence and associativity rules for resolution
 					std::unordered_set<Item, ItemHash> next_set;
 					std::string terminal = item.production[item.position];
 					goto_function(canonicalSet_i.first, terminal, next_set);
@@ -585,5 +587,3 @@ int main(int argc, char** argv) {
 	parserGen.build_cc();
 	parserGen.build_tables();
 }
-
-// TODO: FIX non_terminals_vec(). It contains repeated elements.
