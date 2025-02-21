@@ -101,7 +101,7 @@ class ParserGen {
 			std::cout << "Extracted Terminals\n===================\n";
 			auto col = 0;
 			for (auto& terminal : terminals) {
-				std::cout << terminal;
+				std::cout << terminal.str << " " << terminal.precedence << " " << terminal.associativity;
 				++col;
 				if (!(col % 8)) std::cout << "\n";
 				else if (col < terminals.size()) std::cout << ", ";
@@ -263,7 +263,16 @@ class ParserGen {
 	std::unordered_map<std::string, std::vector<std::string>> productions;
 	//std::unordered_map<std::vector<std::vector<std::string>>, std::string> rightmost_deriv;
 
-	std::unordered_set<std::string> terminals;
+	struct Terminal {		
+		std::string str;
+		std::string associativity; // l (left-associative), r (right-associative), n (non-associative)
+		size_t precedence;
+		
+		Terminal(std::string t_term, size_t prec, std::string assoc) :
+			str(t_term), precedence(prec), associativity(assoc) {}
+	};
+
+	std::unordered_set<Terminal> terminals;
 	std::unordered_set<std::string> non_terminals;
 	std::unordered_map<std::string, std::string> first_cache;
 
@@ -309,19 +318,44 @@ public:
 
 				if (scanning_terminals) {
 					if (line[0] == 't' && line[1] == '_') {
-						// ensure that the token declarations do not contain whitespace.
+						std::string str; size_t prec(0); std::string assoc = "n";
+						std::vector<std::string> term_info;
+
 						auto j = 2;
-						while (j++ < line.size()) {
-							if (is_whitespace(line[j])) {
-								error_in_get_terminals_and_productions = true;
-								std::cout << "Error: Terminal symbol declarations shouldn't include whitespace(s).\n"
-									<< "[Line " << l_no << "]: " << line << "\n\n";
-								break;
-							}
+						auto start = 0;
+						auto count = 0;
+
+						if (j >= line.size()) {
+							error_in_get_terminals_and_productions = true;
+							std::cout << "Error: Incomplete terminal symbol declaration.\n"
+										<< "[Line " << l_no << "]: " << line << "\n\n";
+							continue;
 						}
 
-						if (l_no == 1) goal_production_lookahead_symbol = std::string(line, 0, line.size());
-						terminals.emplace(line, 0, line.size());
+						while (j++ <= line.size() && 4 >= term_info.size()) {
+							if (is_whitespace(line[j]) || j >= line.size()) {
+								term_info.emplace_back(line, start, line.size() - start);
+							}
+						}
+						
+						if (term_info.size() == 1) {
+							terminals.emplace(term_info[0], 0, "n");
+						}
+						else if (term_info.size() == 2) {
+							if (term_info[1] == "n" || term_info[1] == "l" || term_info[1] == "r") {
+								terminals.emplace(term_info[0], 0, term_info[1]);
+							}
+							terminals.emplace(term_info[0], std::stoul(term_info[1]), "n");
+						}
+						else if (term_info.size() == 3) {
+							terminals.emplace(term_info[0], term_info[1], term_info[2]);
+						}
+						else {
+							error_in_get_terminals_and_productions = true;
+							std::cout << "Error: Terminal symbol declaration information should not contain more than three fields (or two whitespace characters)! \n"
+										<< "[Line " << l_no << "]: " << line << "\n\n";
+							continue;
+						}
 					}
 					else if (line == "") {
 						scanning_terminals = false;
@@ -329,7 +363,7 @@ public:
 					}
 					else {
 						error_in_get_terminals_and_productions = true;
-						std::cout << "Error: Terminal symbols must be declared with a 't_' prefix!\n"
+						std::cout << "Error: Terminal symbols must be declared with a 't_' prefix.\n"
 							<< "[Line " << l_no++ << "]: " << line << "\n\n";
 					}
 				}
@@ -455,6 +489,8 @@ public:
 	void build_tables() {
 		for (auto& canonicalSet_i : canonicalCollection) {
 			for (auto& item : canonicalSet_i.first) {
+				// Checking the condition for the SHIFT action first, ensures that in the possible case 
+				// of a SHIFT-REDUCE conflict the parser-generator favors the SHIFT action.
 				if (item.position < item.production.size() &&
 					terminals.count(item.production[item.position]))
 				{
