@@ -40,10 +40,10 @@ class ParserGen {
 
 	struct Item {
 		size_t position;
-		std::vector<std::string> production;
-		std::string lookahead;
+		std::vector<std::string_view> production;
+		std::string_view lookahead;
 
-		Item(size_t pos, std::vector<std::string> prod, std::string la)
+		Item(size_t pos, std::vector<std::string_view> prod, std::string_view la)
 			: position{ pos }, production{ prod }, lookahead{ la } {}
 
 		bool operator==(const Item& other) const {
@@ -54,11 +54,11 @@ class ParserGen {
 	};
 
 	struct Terminal {
-		std::string str;
-		std::string associativity; // l (left-associative), r (right-associative), n (non-associative)
+		std::string_view str;
 		int precedence;
+		std::string associativity; // l (left-associative), r (right-associative), n (non-associative)
 
-		Terminal(std::string t_term, size_t prec, std::string assoc) :
+		Terminal(std::string_view t_term, size_t prec, std::string assoc) :
 			str(t_term), precedence(prec), associativity(assoc) {}
 
 		bool operator==(const Terminal& other) const {
@@ -97,7 +97,7 @@ class ParserGen {
 
 	struct TerminalHash {
 		size_t operator()(const Terminal& terminal) const {
-			return std::hash<std::string>{}(terminal.str);
+			return std::hash<std::string_view>{}(terminal.str);
 		}
 	};
 
@@ -145,7 +145,7 @@ class ParserGen {
 			for (auto& production : productions) {
 				std::cout << production.first << " > ";
 
-				std::vector<std::string> values = production.second;
+				std::vector<std::string_view> values = production.second;
 				for (auto& value : values) {
 					std::cout << "{ " << value << " } ";
 				}
@@ -196,12 +196,12 @@ class ParserGen {
 	void closure_function(std::unordered_set<Item, ItemHash>& canonicalSet_i) {
 		for (auto& item : canonicalSet_i) {
 			if (item.position >= item.production.size()) continue;
-			std::string C = item.production[item.position];
-
+			std::string_view C = item.production[item.position];
+		
 			// generate [first] for item
-			std::unordered_set<std::string> first;
+			std::unordered_set<std::string_view> first;
 			if ((item.position + 1) < item.production.size()) {
-				std::string symbol = item.production[item.position + 1];
+				std::string_view symbol = item.production[item.position + 1];
 				if (terminals.count(Terminal(symbol, 0, "n")) == 1) {
 					// if rhs symbol is a terminal
 					first.insert(symbol);
@@ -215,15 +215,15 @@ class ParserGen {
 					}
 					else {
 						// no
-						std::vector<std::string> rhs = productions[symbol];
-
+						std::vector<std::string_view> rhs = productions[symbol];
+		
 						for (auto& r : rhs) {
 							for (auto i = 0; i < r.size(); i++) {
 								if (r[i] == ' ') {
 									std::string temp = std::string(r, 0, i);
 									if (terminals.count(Terminal(temp, 0, "n")) == 1) {
-										first.emplace(temp);
-										first_cache[temp] = temp;
+										first.insert(*strings.find(temp));
+										first_cache[*strings.find(temp)] = *strings.find(temp);
 										break;
 									}
 								}
@@ -232,27 +232,27 @@ class ParserGen {
 					}
 				}
 			}
-
+		
 			if (first.empty()) {
 				first.insert(item.lookahead);
 			}
-
+		
 			// Rest of closure algorithm
-			std::vector<std::string> rhs = productions[C];
-
+			std::vector<std::string_view> rhs = productions[C];
+		
 			for (auto& prod : rhs) {
-				std::vector<std::string> cItemProd{ C };
-
+				std::vector<std::string_view> cItemProd{ C };
+		
 				auto start = 0;
 				auto i = 0;
 				for (; i < prod.size(); i++) {
 					if (prod[i] == ' ') {
-						cItemProd.push_back(std::string(prod, start, i - start));
+						cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
 						start = i + 1;
 					}
 				}
-				cItemProd.push_back(std::string(prod, start, i - start));
-
+				cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
+		
 				for (auto& b : first) {
 					canonicalSet_i.emplace(1, cItemProd, b);
 				}
@@ -260,7 +260,7 @@ class ParserGen {
 		}
 	}
 
-	void goto_function(const std::unordered_set<Item, ItemHash>& canonicalSet_i, std::string symbol,
+	void goto_function(const std::unordered_set<Item, ItemHash>& canonicalSet_i, std::string_view symbol,
 		std::unordered_set<Item, ItemHash>& moved) {
 		for (auto& item : canonicalSet_i) {
 			if (item.position < item.production.size() &&
@@ -274,7 +274,7 @@ class ParserGen {
 		closure_function(moved);
 	}
 
-	void set_last_terminal(Terminal& last_terminal, const std::vector<std::string>& item_production) {
+	void set_last_terminal(Terminal& last_terminal, const std::vector<std::string_view>& item_production) {
 		for (auto i = static_cast<int>(item_production.size() - 1); i >= 0; i--) {
 			if (terminals.count(Terminal(item_production[i], 0, "n"))) {
 				last_terminal.str = terminals.find(Terminal(item_production[i], 0, "n"))->str;
@@ -285,23 +285,23 @@ class ParserGen {
 		}
 	}
 
-	std::unordered_map<std::string, size_t> string_hashes;
+	std::unordered_set<std::string> strings;
 
 	// 'string' as key, 'vector of strings' as value
 	// Example key-value pairing:
 	// "List" : {{"List Pair"}, {"Pair"}}
 	// "Pair" : {{"t_lp Pair t_rp"}, {"t_lp t_rp"}}
-	std::unordered_map<std::string, std::vector<std::string>> productions;
+	std::unordered_map<std::string_view, std::vector<std::string_view>> productions;
 	std::unordered_map<std::string, std::string> right_deriv;
 
 	std::unordered_set<Terminal, TerminalHash> terminals;
-	std::unordered_set<std::string> non_terminals;
-	std::unordered_map<std::string, std::string> first_cache;
+	std::unordered_set<std::string_view> non_terminals;
+	std::unordered_map<std::string_view, std::string_view> first_cache;
 
 	std::string grammar_txt;
 	std::string output_h;
-	std::string goal_production_lookahead_symbol;
-	std::string goal_lhs_symbol;
+	std::string_view goal_production_lookahead_symbol;
+	std::string_view goal_lhs_symbol;
 	// Key: Set of items
 	// Value: marked/unmarked-ness of set, index of set]
 	struct CanonicalCollectionValue {
@@ -371,16 +371,26 @@ public:
 						if (temp != "") term_info.emplace_back(line, start, line.size() - start);
 
 						if (term_info.size() == 1) {
-							terminals.emplace(term_info[0], 0, "n");
+							strings.insert(term_info[0]);
+							terminals.emplace(*strings.find(term_info[0]), 0, "n");
 						}
 						else if (term_info.size() == 2) {
+							strings.insert(term_info[0]);
 							if (term_info[1] == "n" || term_info[1] == "l" || term_info[1] == "r") {
-								terminals.emplace(term_info[0], 0, term_info[1]);
+								terminals.emplace(*strings.find(term_info[0]), 0, term_info[1]);
 							}
-							terminals.emplace(term_info[0], std::stoi(term_info[1]), "n");
+							terminals.emplace(*strings.find(term_info[0]), std::stoi(term_info[1]), "n");
 						}
 						else if (term_info.size() == 3) {
-							terminals.emplace(term_info[0], std::stoi(term_info[1]), term_info[2]);
+							if (term_info[2] != "n" && term_info[2] != "l" && term_info[2] != "r") {
+								error_in_get_terminals_and_productions = true;
+								std::cout << "Error: Terminal associativity field can only be one of: 'r' (right-associative), 'l' (left-associative), 'n' (non-associative)\n"
+									<< "[Line " << l_no << "]: " << line << "\n\n";
+								continue;
+							}
+							
+							strings.insert(term_info[0]);
+							terminals.emplace(*strings.find(term_info[0]), std::stoi(term_info[1]), term_info[2]);
 						}
 						else {
 							error_in_get_terminals_and_productions = true;
@@ -389,7 +399,7 @@ public:
 							continue;
 						}
 
-						if (l_no == 1) goal_production_lookahead_symbol = term_info[0];
+						if (l_no == 1) goal_production_lookahead_symbol = *strings.find(term_info[0]);
 					}
 					else if (line == "") {
 						parsing_terminals = false;
@@ -420,8 +430,9 @@ public:
 
 					// valid lhs of production has been scanned
 					std::string lhs = std::string(line, start, j);
-					if (productions.size() == 0) goal_lhs_symbol = lhs;
-					non_terminals.emplace(lhs);
+					strings.insert(lhs);
+					if (productions.size() == 0) goal_lhs_symbol = *strings.find(lhs);
+					non_terminals.emplace(*strings.find(lhs));
 
 					start = j;  j += 3;
 					std::string delim = std::string(line, start, j - start);
@@ -451,6 +462,7 @@ public:
 						}
 					}
 
+					// Test if lhs or rhs can come up empty.
 					if (whitespace_count == 0) {
 						std::string rhs(line, start, line.size() - start);
 						if (right_deriv.count(rhs)) {
@@ -460,8 +472,11 @@ public:
 								<< right_deriv[rhs] << " > " << rhs << "\n\n";
 							continue;
 						}
+						strings.insert(rhs);
+						strings.insert(lhs);
+
 						right_deriv[rhs] = lhs;
-						productions[lhs].push_back(rhs);
+						productions[*strings.find(lhs)].push_back(*strings.find(rhs));
 					}
 				}
 				l_no++;
@@ -479,23 +494,23 @@ public:
 		std::unordered_set<Item, ItemHash> canonicalSet_0;
 		auto& goal = productions[goal_lhs_symbol];
 		for (auto& production : goal) {
-			std::vector<std::string> beginItemProd;
+			std::vector<std::string_view> beginItemProd;
 			beginItemProd.push_back(goal_lhs_symbol);
 			beginItemProd.push_back(production);
 			canonicalSet_0.emplace(1, beginItemProd, goal_production_lookahead_symbol);
 		}
-
+		
 		auto number_of_unmarked_sets = 0;
 		size_t set_index = 0;
 		closure_function(canonicalSet_0);
 		CanonicalCollectionValue ccv{ set_index, false };
 		canonicalCollection.emplace(canonicalSet_0, ccv);
-
+		
 		// count "unmarked" and keep looping until "unmarked" is equal
 		// to zero. That is, all available sets in canonicalCollection have
 		// been processed. This is to ensure that sets inserted after the
 		// current iterator position get visited in subsequent passes.
-
+		
 		++number_of_unmarked_sets;
 		while (number_of_unmarked_sets > 0) {
 			for (auto& canonicalSet_i : canonicalCollection) {
@@ -505,7 +520,7 @@ public:
 						std::unordered_set<Item, ItemHash> new_set;
 						if (item.position >= item.production.size()) continue;
 						goto_function(canonicalSet_i.first, item.production[item.position], new_set);
-
+		
 						if (canonicalCollection.count(new_set) == 0) {
 							++set_index;
 							ccv = { set_index, false };
@@ -519,7 +534,7 @@ public:
 				}
 			}
 		}
-
+		
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
 
@@ -537,7 +552,7 @@ public:
 					terminals.count(Terminal(item.production[item.position], 0, "n")))
 				{
 					std::unordered_set<Item, ItemHash> next_set;
-					std::string terminal = item.production[item.position];
+					std::string_view terminal = item.production[item.position];
 					goto_function(canonicalSet_i.first, terminal, next_set);
 					if (canonicalCollection.count(next_set)) {
 						auto next_state = canonicalCollection[next_set].state;
@@ -565,7 +580,7 @@ public:
 						// first handle SHIFT-REDUCE conflicts that require precedence and associativity rules for resolution
 						Terminal last_terminal("", 0, "n"); // set a dummy terminal
 						set_last_terminal(last_terminal, item.production);
-
+		
 						if (last_terminal.str == "") {
 							// production rhs has no terminals (production that derives a production)
 							// auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
@@ -603,7 +618,7 @@ public:
 					}
 				}
 			}
-
+		
 			for (auto& non_term : non_terminals) {
 				std::unordered_set<Item, ItemHash> next_set;
 				goto_function(canonicalSet_i.first, non_term, next_set);
@@ -614,7 +629,7 @@ public:
 				}
 			}
 		}
-
+		
 		if (debug) {
 			print_debug_info(ACTION_TABLE);
 			print_debug_info(GOTO_TABLE);
