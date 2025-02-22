@@ -5,7 +5,7 @@
 #include <string_view>
 #include <map>
 #include <vector>
-#include <array>
+#include <variant>
 #include <unordered_set>
 #include <unordered_map>
 
@@ -109,7 +109,7 @@ class ParserGen {
 
 	struct Action {
 		ActionType type;
-		size_t state;
+		std::variant<size_t, std::string_view> value;
 	};
 
 	void print_debug_info(ParseGenLvl pg_lvl) {
@@ -173,10 +173,10 @@ class ParserGen {
 				std::cout << "[" << entry.first.first << ", " << entry.first.second << "] > ";
 				switch (entry.second.type) {
 				case SHIFT:
-					std::cout << "SHIFT " << entry.second.state << "\n";
+					std::cout << "SHIFT " << std::get<size_t>(entry.second.value) << "\n";
 					break;
 				case REDUCE:
-					std::cout << "REDUCE " << entry.second.state << "\n";
+					std::cout << "REDUCE " << std::get<std::string_view>(entry.second.value) << "\n";
 					break;
 				case ACCEPT:
 					std::cout << "ACCEPT\n";
@@ -292,7 +292,6 @@ class ParserGen {
 	// "List" : {{"List Pair"}, {"Pair"}}
 	// "Pair" : {{"t_lp Pair t_rp"}, {"t_lp t_rp"}}
 	std::unordered_map<std::string_view, std::vector<std::string_view>> productions;
-	std::unordered_map<std::string, std::string> right_deriv;
 
 	std::unordered_set<Terminal, TerminalHash> terminals;
 	std::unordered_set<std::string_view> non_terminals;
@@ -336,6 +335,7 @@ public:
 		size_t l_no = 1; // solely for error-reporting
 		bool parsing_terminals = true;
 		bool parsing_productions = false;
+		std::unordered_map<std::string, std::string> right_deriv;
 
 		for (size_t i = 0; i < grammar_txt.length(); i++) {
 			if (grammar_txt[i] == '\n' || i == grammar_txt.length() - 1) {
@@ -475,7 +475,7 @@ public:
 						strings.insert(rhs);
 						strings.insert(lhs);
 
-						right_deriv[rhs] = lhs;
+						right_deriv[*strings.find(rhs)] = *strings.find(lhs);
 						productions[*strings.find(lhs)].push_back(*strings.find(rhs));
 					}
 				}
@@ -571,8 +571,8 @@ public:
 						}
 						else {
 							// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
-							auto grammar_rule_no = 0;
-							Action action{ REDUCE, grammar_rule_no };
+							std::string_view lhs = item.production[0];
+							Action action{ REDUCE, lhs };
 							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
 						}
 					}
@@ -585,23 +585,23 @@ public:
 							// production rhs has no terminals (production that derives a production)
 							// auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
 							// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
-							auto grammar_rule_no = 0;
-							Action action{ REDUCE, grammar_rule_no };
+							std::string_view lhs = item.production[0];
+							Action action{ REDUCE, lhs };
 							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
 						}
 						else {
 							// using the now defined last_terminal variable, resolve SHIFT-REDUCE conflict
 							// thanks to defined precedence and associativity rules
 							if (last_terminal.precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) {
-								auto grammar_rule_no = 0;
-								Action action{ REDUCE, grammar_rule_no };
+								std::string_view lhs = item.production[0];
+								Action action{ REDUCE, lhs };
 								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
 							}
 							else if ((last_terminal.precedence == terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) &&
 								(last_terminal.associativity == "l" || last_terminal.associativity == "n"))
 							{
-								auto grammar_rule_no = 0;
-								Action action{ REDUCE, grammar_rule_no };
+								std::string_view lhs = item.production[0];
+								Action action{ REDUCE, lhs };
 								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
 							}
 							else {
