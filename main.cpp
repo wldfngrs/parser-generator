@@ -105,7 +105,6 @@ class ParserGen {
 		SHIFT,
 		REDUCE,
 		ACCEPT,
-		ERROR,
 	};
 
 	struct Action {
@@ -262,7 +261,7 @@ class ParserGen {
 	}
 
 	void goto_function(const std::unordered_set<Item, ItemHash>& canonicalSet_i, std::string symbol,
-						std::unordered_set<Item, ItemHash>& moved) {
+		std::unordered_set<Item, ItemHash>& moved) {
 		for (auto& item : canonicalSet_i) {
 			if (item.position < item.production.size() &&
 				item.production[item.position] == symbol)
@@ -275,18 +274,32 @@ class ParserGen {
 		closure_function(moved);
 	}
 
+	void set_last_terminal(Terminal& last_terminal, const std::vector<std::string>& item_production) {
+		for (auto i = static_cast<int>(item_production.size() - 1); i >= 0; i--) {
+			if (terminals.count(Terminal(item_production[i], 0, "n"))) {
+				last_terminal.str = terminals.find(Terminal(item_production[i], 0, "n"))->str;
+				last_terminal.precedence = terminals.find(Terminal(item_production[i], 0, "n"))->precedence;
+				last_terminal.associativity = terminals.find(Terminal(item_production[i], 0, "n"))->associativity;
+				break;
+			}
+		}
+	}
+
+	std::unordered_map<std::string, size_t> string_hashes;
+
 	// 'string' as key, 'vector of strings' as value
 	// Example key-value pairing:
 	// "List" : {{"List Pair"}, {"Pair"}}
 	// "Pair" : {{"t_lp Pair t_rp"}, {"t_lp t_rp"}}
 	std::unordered_map<std::string, std::vector<std::string>> productions;
-	//std::unordered_map<std::vector<std::vector<std::string>>, std::string> rightmost_deriv;
+	std::unordered_map<std::string, std::string> right_deriv;
 
 	std::unordered_set<Terminal, TerminalHash> terminals;
 	std::unordered_set<std::string> non_terminals;
 	std::unordered_map<std::string, std::string> first_cache;
 
 	std::string grammar_txt;
+	std::string output_h;
 	std::string goal_production_lookahead_symbol;
 	std::string goal_lhs_symbol;
 	// Key: Set of items
@@ -295,9 +308,9 @@ class ParserGen {
 		size_t state;
 		bool marked;
 	};
-	
+
 	std::unordered_map<std::unordered_set<Item, ItemHash>, CanonicalCollectionValue, CanonicalCollectionHash> canonicalCollection;
-	
+
 	// std::unordered_map<std::pair<size_t, TokenType>, Action, PairHash> actionTable;
 	std::unordered_map<std::pair<size_t, std::string>, Action, PairHash> actionTable;
 	std::unordered_map<std::pair<size_t, std::string>, size_t, PairHash> gotoTable;
@@ -306,12 +319,13 @@ public:
 	bool debug = true;
 	bool error_in_get_terminals_and_productions = false;
 
-	ParserGen(std::string pathToGrammar) {
+	ParserGen(std::string path_to_grammar, std::string path_to_output) {
 		std::stringstream ss;
-		std::ifstream file(pathToGrammar, std::ios_base::in);
+		std::ifstream file(path_to_grammar, std::ios_base::in);
 
 		ss << file.rdbuf();
 		grammar_txt = ss.str();
+		output_h = path_to_output;
 	}
 
 	void get_terminals_and_productions() {
@@ -339,7 +353,7 @@ public:
 						if (j >= line.size()) {
 							error_in_get_terminals_and_productions = true;
 							std::cout << "Error: Incomplete terminal symbol declaration.\n"
-										<< "[Line " << l_no << "]: " << line << "\n\n";
+								<< "[Line " << l_no << "]: " << line << "\n\n";
 							continue;
 						}
 
@@ -355,7 +369,7 @@ public:
 
 						std::string temp = std::string(line, start, line.size() - start);
 						if (temp != "") term_info.emplace_back(line, start, line.size() - start);
-						
+
 						if (term_info.size() == 1) {
 							terminals.emplace(term_info[0], 0, "n");
 						}
@@ -371,7 +385,7 @@ public:
 						else {
 							error_in_get_terminals_and_productions = true;
 							std::cout << "Error: Terminal symbol declaration information should not contain more than three fields (or two whitespace characters)! \n"
-										<< "[Line " << l_no << "]: " << line << "\n\n";
+								<< "[Line " << l_no << "]: " << line << "\n\n";
 							continue;
 						}
 
@@ -436,9 +450,17 @@ public:
 							whitespace_count = 0;
 						}
 					}
-					
+
 					if (whitespace_count == 0) {
 						std::string rhs(line, start, line.size() - start);
+						if (right_deriv.count(rhs)) {
+							error_in_get_terminals_and_productions = true;
+							std::cout << "Error: Grammar production has a potential REDUCE-REDUCE conflict.\n"
+								<< "[Line " << l_no << "]: " << line << " AND "
+								<< right_deriv[rhs] << " > " << rhs << "\n\n";
+							continue;
+						}
+						right_deriv[rhs] = lhs;
 						productions[lhs].push_back(rhs);
 					}
 				}
@@ -462,13 +484,13 @@ public:
 			beginItemProd.push_back(production);
 			canonicalSet_0.emplace(1, beginItemProd, goal_production_lookahead_symbol);
 		}
-		
+
 		auto number_of_unmarked_sets = 0;
 		size_t set_index = 0;
 		closure_function(canonicalSet_0);
 		CanonicalCollectionValue ccv{ set_index, false };
 		canonicalCollection.emplace(canonicalSet_0, ccv);
-		
+
 		// count "unmarked" and keep looping until "unmarked" is equal
 		// to zero. That is, all available sets in canonicalCollection have
 		// been processed. This is to ensure that sets inserted after the
@@ -483,7 +505,7 @@ public:
 						std::unordered_set<Item, ItemHash> new_set;
 						if (item.position >= item.production.size()) continue;
 						goto_function(canonicalSet_i.first, item.production[item.position], new_set);
-						
+
 						if (canonicalCollection.count(new_set) == 0) {
 							++set_index;
 							ccv = { set_index, false };
@@ -500,7 +522,7 @@ public:
 
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
-	
+
 	// TODO: the algorithm for build_cc() seems to suggest that the tables *could* be built
 	// within the routine (i.e while building the canonicalCollection itself). However, 
 	// I'm not sure, and don't have the time or energy to prove this to be a workable solution.
@@ -514,7 +536,6 @@ public:
 				if (item.position < item.production.size() &&
 					terminals.count(Terminal(item.production[item.position], 0, "n")))
 				{
-					// for SHIFT-REDUCE conflicts that require precedence and associativity rules for resolution
 					std::unordered_set<Item, ItemHash> next_set;
 					std::string terminal = item.production[item.position];
 					goto_function(canonicalSet_i.first, terminal, next_set);
@@ -541,15 +562,48 @@ public:
 						}
 					}
 					else {
-						// auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
-						// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
-						auto grammar_rule_no = 0;
-						Action action{ REDUCE, grammar_rule_no };
-						actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+						// first handle SHIFT-REDUCE conflicts that require precedence and associativity rules for resolution
+						Terminal last_terminal("", 0, "n"); // set a dummy terminal
+						set_last_terminal(last_terminal, item.production);
+
+						if (last_terminal.str == "") {
+							// production rhs has no terminals (production that derives a production)
+							// auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
+							// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
+							auto grammar_rule_no = 0;
+							Action action{ REDUCE, grammar_rule_no };
+							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+						}
+						else {
+							// using the now defined last_terminal variable, resolve SHIFT-REDUCE conflict
+							// thanks to defined precedence and associativity rules
+							if (last_terminal.precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) {
+								auto grammar_rule_no = 0;
+								Action action{ REDUCE, grammar_rule_no };
+								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							}
+							else if ((last_terminal.precedence == terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) &&
+								(last_terminal.associativity == "l" || last_terminal.associativity == "n"))
+							{
+								auto grammar_rule_no = 0;
+								Action action{ REDUCE, grammar_rule_no };
+								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							}
+							else {
+								std::unordered_set<Item, ItemHash> next_set;
+								goto_function(canonicalSet_i.first, item.lookahead, next_set);
+								if (canonicalCollection.count(next_set)) {
+									auto next_state = canonicalCollection[next_set].state;
+									// add to actionTable that action[i, item.production[item.position]] ==> shift (to) next_state
+									Action action{ SHIFT, next_state };
+									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+								}
+							}
+						}
 					}
 				}
 			}
-	
+
 			for (auto& non_term : non_terminals) {
 				std::unordered_set<Item, ItemHash> next_set;
 				goto_function(canonicalSet_i.first, non_term, next_set);
@@ -566,15 +620,19 @@ public:
 			print_debug_info(GOTO_TABLE);
 		}
 	}
+
+	void build_output_file() {
+		;
+	}
 };
 
 int main(int argc, char** argv) {
-	if (argc != 2) {
-		std::cout << "usage: ./parsegen <path/to/grammar>\n";
+	if (argc != 3) {
+		std::cout << "usage: ./parsegen <path/to/grammar> <path/to/output/file>\n";
 		exit(1);
 	}
 
-	ParserGen parserGen(argv[1]);
+	ParserGen parserGen(argv[1], argv[2]);
 
 	// parserGen.debug = false;
 	parserGen.get_terminals_and_productions();
@@ -586,4 +644,5 @@ int main(int argc, char** argv) {
 
 	parserGen.build_cc();
 	parserGen.build_tables();
+	parserGen.build_output_file();
 }
