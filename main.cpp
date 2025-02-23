@@ -80,8 +80,8 @@ class ParserGen {
 	};
 
 	struct PairHash {
-		size_t operator()(const std::pair<size_t, std::string>& pair) const {
-			return std::hash<size_t>{}(pair.first) ^ std::hash<std::string>{}(pair.second);
+		size_t operator()(const std::pair<size_t, std::string_view>& pair) const {
+			return std::hash<size_t>{}(pair.first) ^ std::hash<std::string_view>{}(pair.second);
 		}
 	};
 
@@ -300,8 +300,8 @@ class ParserGen {
 	std::unordered_map<std::unordered_set<Item, ItemHash>, CanonicalCollectionValue, CanonicalCollectionHash> canonicalCollection;
 
 	// std::unordered_map<std::pair<size_t, TokenType>, Action, PairHash> actionTable;
-	std::unordered_map<std::pair<size_t, std::string>, Action, PairHash> actionTable;
-	std::unordered_map<std::pair<size_t, std::string>, size_t, PairHash> gotoTable;
+	std::unordered_map<std::pair<size_t, std::string_view>, Action, PairHash> actionTable;
+	std::unordered_map<std::pair<size_t, std::string_view>, size_t, PairHash> gotoTable;
 
 public:
 	bool debug = true;
@@ -647,6 +647,10 @@ public:
 
 	void build_output_file() {
 		std::ofstream file("output.h", std::ios::out);
+		file << "#include <unordered_map>\n"
+				"#include <string>\n\n"
+				"struct PairHash {\n"
+				"\tsize_t operator()(const std::pair<size_t, std::string>)";
 	}
 };
 
