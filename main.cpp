@@ -9,16 +9,6 @@
 #include <unordered_set>
 #include <unordered_map>
 
-// std::stack<size_t> states {0};
-// std::stack<TokenType> tokens;.
-// std::stack<Statement> symbols;
-
-// Interpret 'next' differently. 
-// SHIFT action interprets 'next' variable as holding the
-// next state to move to
-// REDUCE action interprets 'next' as holding the grammar rule
-// the reduction will be following.
-
 static bool is_alpha(char c) {
 	return (c >= 'a' && c <= 'z') ||
 		(c >= 'A' && c <= 'Z');
@@ -298,7 +288,6 @@ class ParserGen {
 	std::unordered_map<std::string_view, std::string_view> first_cache;
 
 	std::string grammar_txt;
-	std::string output_h;
 	std::string_view goal_production_lookahead_symbol;
 	std::string_view goal_lhs_symbol;
 	// Key: Set of items
@@ -317,14 +306,21 @@ class ParserGen {
 public:
 	bool debug = true;
 	bool error_in_get_terminals_and_productions = false;
+	bool file_access_error = false;
 
-	ParserGen(std::string path_to_grammar, std::string path_to_output) {
+	ParserGen(std::string path_to_grammar) {
 		std::stringstream ss;
-		std::ifstream file(path_to_grammar, std::ios_base::in);
+		std::ifstream file(path_to_grammar, std::ios::in);
+
+		if (!file.is_open()) {
+			file_access_error = true;
+			return;
+		}
 
 		ss << file.rdbuf();
 		grammar_txt = ss.str();
-		output_h = path_to_output;
+
+		file.close();
 	}
 
 	void get_terminals_and_productions() {
@@ -463,8 +459,8 @@ public:
 					}
 
 					// Test if lhs or rhs can come up empty.
+					std::string rhs(line, start, line.size() - start);
 					if (whitespace_count == 0) {
-						std::string rhs(line, start, line.size() - start);
 						if (right_deriv.count(rhs)) {
 							error_in_get_terminals_and_productions = true;
 							std::cout << "Error: Grammar production has a potential REDUCE-REDUCE conflict.\n"
@@ -472,11 +468,24 @@ public:
 								<< right_deriv[rhs] << " > " << rhs << "\n\n";
 							continue;
 						}
+
+						if (rhs == "") {
+							error_in_get_terminals_and_productions = true;
+							std::cout << "Error: Grammar production rhs is empty. Ill-defined grammar.\n"
+								<< "[Line " << l_no << "]: " << line << "\n\n";
+							continue;
+						}
 						strings.insert(rhs);
 						strings.insert(lhs);
 
 						right_deriv[*strings.find(rhs)] = *strings.find(lhs);
 						productions[*strings.find(lhs)].push_back(*strings.find(rhs));
+					}
+
+					if (is_whitespace(rhs[0])) {
+						error_in_get_terminals_and_productions = true;
+						std::cout << "Error: Grammar production rhs is empty (cannont start with whitespace). Ill-defined grammar.\n"
+							<< "[Line " << l_no << "]: " << line << "\n\n";
 					}
 				}
 				l_no++;
@@ -637,19 +646,23 @@ public:
 	}
 
 	void build_output_file() {
-		;
+		std::ofstream file("output.h", std::ios::out);
 	}
 };
 
 int main(int argc, char** argv) {
-	if (argc != 3) {
-		std::cout << "usage: ./parsegen <path/to/grammar> <path/to/output/file>\n";
+	if (argc != 2) {
+		std::cout << "usage: ./parsegen <path/to/grammar>\n";
 		exit(1);
 	}
 
-	ParserGen parserGen(argv[1], argv[2]);
+	ParserGen parserGen(argv[1]);
 
-	// parserGen.debug = false;
+	if (parserGen.file_access_error) {
+		std::cout << "Unable to open " << argv[1] << " file\n";
+		return -1;
+	}
+
 	parserGen.get_terminals_and_productions();
 
 	if (parserGen.error_in_get_terminals_and_productions) {
