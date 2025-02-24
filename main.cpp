@@ -79,9 +79,15 @@ class ParserGen {
 		}
 	};
 
+	//TODO: Combine all of the hashes into a single hash struct for compile time polymorphism/function overloading
+
 	struct PairHash {
 		size_t operator()(const std::pair<size_t, std::string_view>& pair) const {
 			return std::hash<size_t>{}(pair.first) ^ std::hash<std::string_view>{}(pair.second);
+		}
+
+		size_t operator()(const std::pair<std::string_view, size_t>& pair) const {
+			return std::hash<std::string_view>{}(pair.first) ^ std::hash<size_t>{}(pair.second);
 		}
 	};
 
@@ -99,7 +105,7 @@ class ParserGen {
 
 	struct Action {
 		ActionType type;
-		std::variant<size_t, std::string_view> value;
+		size_t value;
 	};
 
 	void print_debug_info(ParseGenLvl pg_lvl) {
@@ -111,7 +117,8 @@ class ParserGen {
 			for (auto& terminal : terminals) {
 				std::cout << "[" << terminal.str << ", " << terminal.precedence << ", " << terminal.associativity << "]";
 				++col;
-				if (!(col % 8)) std::cout << "\n";
+				if (col == terminals.size()) std::cout << "\n";
+				else if (!(col % 8)) std::cout << "\n";
 				else if (col < terminals.size()) std::cout << ", ";
 			}
 			std::cout << "\n";
@@ -124,10 +131,10 @@ class ParserGen {
 			for (auto& non_terminal : non_terminals) {
 				std::cout << non_terminal;
 				++col;
-				if (!(col % 8)) std::cout << "\n";
+				if (col == non_terminals.size()) std::cout << "\n";
+				else if (!(col % 8)) std::cout << "\n";
 				else if (col < non_terminals.size()) std::cout << ", ";
 			}
-			std::cout << "\n";
 			break;
 		}
 		case PRODUCTIONS:
@@ -163,10 +170,10 @@ class ParserGen {
 				std::cout << "[" << entry.first.first << ", " << entry.first.second << "] > ";
 				switch (entry.second.type) {
 				case SHIFT:
-					std::cout << "SHIFT " << std::get<size_t>(entry.second.value) << "\n";
+					std::cout << "SHIFT " << entry.second.value << "\n";
 					break;
 				case REDUCE:
-					std::cout << "REDUCE " << std::get<std::string_view>(entry.second.value) << "\n";
+					std::cout << "REDUCE " << reduce_info[entry.second.value].first << "\n";
 					break;
 				case ACCEPT:
 					std::cout << "ACCEPT\n";
@@ -187,7 +194,7 @@ class ParserGen {
 		for (auto& item : canonicalSet_i) {
 			if (item.position >= item.production.size()) continue;
 			std::string_view C = item.production[item.position];
-		
+
 			// generate [first] for item
 			std::unordered_set<std::string_view> first;
 			if ((item.position + 1) < item.production.size()) {
@@ -206,7 +213,7 @@ class ParserGen {
 					else {
 						// no
 						std::vector<std::string_view> rhs = productions[symbol];
-		
+
 						for (auto& r : rhs) {
 							for (auto i = 0; i < r.size(); i++) {
 								if (r[i] == ' ') {
@@ -222,17 +229,17 @@ class ParserGen {
 					}
 				}
 			}
-		
+
 			if (first.empty()) {
 				first.insert(item.lookahead);
 			}
-		
+
 			// Rest of closure algorithm
 			std::vector<std::string_view> rhs = productions[C];
-		
+
 			for (auto& prod : rhs) {
 				std::vector<std::string_view> cItemProd{ C };
-		
+
 				auto start = 0;
 				auto i = 0;
 				for (; i < prod.size(); i++) {
@@ -242,7 +249,7 @@ class ParserGen {
 					}
 				}
 				cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
-		
+
 				for (auto& b : first) {
 					canonicalSet_i.emplace(1, cItemProd, b);
 				}
@@ -282,6 +289,9 @@ class ParserGen {
 	// "List" : {{"List Pair"}, {"Pair"}}
 	// "Pair" : {{"t_lp Pair t_rp"}, {"t_lp t_rp"}}
 	std::unordered_map<std::string_view, std::vector<std::string_view>> productions;
+
+	// first: symbol to reduce to, second: number of symbols to pop off the stack
+	std::vector<std::pair<std::string_view, size_t>> reduce_info;
 
 	std::unordered_set<Terminal, TerminalHash> terminals;
 	std::unordered_set<std::string_view> non_terminals;
@@ -384,7 +394,7 @@ public:
 									<< "[Line " << l_no << "]: " << line << "\n\n";
 								continue;
 							}
-							
+
 							strings.insert(term_info[0]);
 							terminals.emplace(*strings.find(term_info[0]), std::stoi(term_info[1]), term_info[2]);
 						}
@@ -508,18 +518,18 @@ public:
 			beginItemProd.push_back(production);
 			canonicalSet_0.emplace(1, beginItemProd, goal_production_lookahead_symbol);
 		}
-		
+
 		auto number_of_unmarked_sets = 0;
 		size_t set_index = 0;
 		closure_function(canonicalSet_0);
 		CanonicalCollectionValue ccv{ set_index, false };
 		canonicalCollection.emplace(canonicalSet_0, ccv);
-		
+
 		// count "unmarked" and keep looping until "unmarked" is equal
 		// to zero. That is, all available sets in canonicalCollection have
 		// been processed. This is to ensure that sets inserted after the
 		// current iterator position get visited in subsequent passes.
-		
+
 		++number_of_unmarked_sets;
 		while (number_of_unmarked_sets > 0) {
 			for (auto& canonicalSet_i : canonicalCollection) {
@@ -529,7 +539,7 @@ public:
 						std::unordered_set<Item, ItemHash> new_set;
 						if (item.position >= item.production.size()) continue;
 						goto_function(canonicalSet_i.first, item.production[item.position], new_set);
-		
+
 						if (canonicalCollection.count(new_set) == 0) {
 							++set_index;
 							ccv = { set_index, false };
@@ -543,7 +553,7 @@ public:
 				}
 			}
 		}
-		
+
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
 
@@ -553,6 +563,9 @@ public:
 	// Instead, here's an implementation that seperates the build_cc() routine from the build_table()
 	// routine. For my sanity. I just need to feel like I'm making progress here.
 	void build_tables() {
+		// Key [first: symbol to be reduced to, second: number of symbols to be popped off the stack at the reduction] Value [the index of the key in 'reduce_info' vector] 
+		std::unordered_map<std::pair<std::string_view, size_t>, size_t, PairHash> reduce_info_map;
+
 		for (auto& canonicalSet_i : canonicalCollection) {
 			for (auto& item : canonicalSet_i.first) {
 				// Checking the condition for the SHIFT action first, ensures that in the possible case 
@@ -581,37 +594,79 @@ public:
 						else {
 							// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
 							std::string_view lhs = item.production[0];
-							Action action{ REDUCE, lhs };
-							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							// The reduce_info_map is to avoid duplicates in the reduce_info vector. It is defined within this build_tables() 
+							// function to limit it's scope.
+
+							// If the to-be-added reduce info does not exist in the reduce_info_map, add this new reduce info to the reduce_info
+							// vector, add it as key to the reduce_info_map (with value being the index of the vector the key was added to), then 
+							// generate the REDUCE action.
+							// Else, find the already existing reduce info, and generate the REDUCE action using it. 
+
+							if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
+								reduce_info.emplace_back(lhs, item.production.size() - 1);
+								reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
+								Action action{ REDUCE, reduce_info.size() - 1 };
+								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							}
+							else {
+								Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
+								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							}
 						}
 					}
 					else {
 						// first handle SHIFT-REDUCE conflicts that require precedence and associativity rules for resolution
 						Terminal last_terminal("", 0, "n"); // set a dummy terminal
 						set_last_terminal(last_terminal, item.production);
-		
+
 						if (last_terminal.str == "") {
 							// production rhs has no terminals (production that derives a production)
 							// auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
 							// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
 							std::string_view lhs = item.production[0];
-							Action action{ REDUCE, lhs };
-							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
+								reduce_info.emplace_back(lhs, item.production.size() - 1);
+								reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
+								Action action{ REDUCE, reduce_info.size() - 1 };
+								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							}
+							else {
+								Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
+								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							}
 						}
 						else {
 							// using the now defined last_terminal variable, resolve SHIFT-REDUCE conflict
 							// thanks to defined precedence and associativity rules
 							if (last_terminal.precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) {
 								std::string_view lhs = item.production[0];
-								Action action{ REDUCE, lhs };
-								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+
+								if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
+									reduce_info.emplace_back(lhs, item.production.size() - 1);
+									reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
+									Action action{ REDUCE, reduce_info.size() - 1 };
+									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+								}
+								else {
+									Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
+									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+								}
 							}
 							else if ((last_terminal.precedence == terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) &&
 								(last_terminal.associativity == "l" || last_terminal.associativity == "n"))
 							{
 								std::string_view lhs = item.production[0];
-								Action action{ REDUCE, lhs };
-								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+
+								if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
+									reduce_info.emplace_back(lhs, item.production.size() - 1);
+									reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
+									Action action{ REDUCE, reduce_info.size() - 1 };
+									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+								}
+								else {
+									Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
+									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+								}
 							}
 							else {
 								std::unordered_set<Item, ItemHash> next_set;
@@ -627,7 +682,7 @@ public:
 					}
 				}
 			}
-		
+
 			for (auto& non_term : non_terminals) {
 				std::unordered_set<Item, ItemHash> next_set;
 				goto_function(canonicalSet_i.first, non_term, next_set);
@@ -638,7 +693,7 @@ public:
 				}
 			}
 		}
-		
+
 		if (debug) {
 			print_debug_info(ACTION_TABLE);
 			print_debug_info(GOTO_TABLE);
@@ -648,9 +703,108 @@ public:
 	void build_output_file() {
 		std::ofstream file("output.h", std::ios::out);
 		file << "#include <unordered_map>\n"
-				"#include <string>\n\n"
-				"struct PairHash {\n"
-				"\tsize_t operator()(const std::pair<size_t, std::string>)";
+			"#include <unordered_set>\n"
+			"#include <string>"
+			"#include <vector>\n\n"
+// start define strings cache
+			"std::unordered_set<std::string> strings {\n\t";
+		auto col = 0;
+		auto total = non_terminals.size();
+		for (auto& non_term : non_terminals) {
+			file << "\"" << non_term << "\"";
+			++col;
+			if (col == total) file << "\n};\n\n";
+			else if (!(col % 8)) file << ",\n\t";
+			else if (col < total) file << ", ";
+		}
+// end define strings cache
+
+// start define terminals enum
+		col = 0;
+		total = terminals.size();
+		file << "enum Token {\n\t";
+		for (auto& term : terminals) {
+			file << term.str;
+			++col;
+			if (col == total) file << "\n};\n\n";
+			if (!(col % 8)) file << ",\n\t";
+			else if (col < total) file << ", ";
+		}
+// end define terminals enum
+
+// start define reduce_info vector
+		col = 0;
+		total = reduce_info.size();
+		file << "std::vector<std::pair<std::string_view, size_t>> reduce_info {\n\t";
+		for (auto& info : reduce_info) {
+			file << "{ *strings.find(\"" << info.first << "\"), " << info.second << " }";
+			++col;
+			if (col == total) file << "\n};\n\n";
+			else if (!(col % 2)) file << ",\n\t";
+			else if (col < total) file << ", ";
+		}
+// end define reduce_info vector
+
+// start define PairHash for hashing the key to the actionTable unordered_map, and gotoTable unordered_map
+		file << "struct PairHash {\n"
+				"\tsize_t operator()(const std::pair<size_t, std::string_view>& pair) const {\n"
+				"\t\treturn std::hash<size_t>{}(pair.first) ^ std::hash<std::string_view>{}(pair.second);\n"
+				"\t}\n\n"
+				"\tsize_t operator()(const std::pair<size_t, Token>& pair) const {\n"
+				"\t\treturn std::hash<size_t>{}(pair.first) ^ pair.second;\n"
+				"\t}\n"
+				"};\n\n";
+// end define PairHash
+
+// start define ActionType enum, and Action struct
+		file << "enum ActionType {\n"
+				"\tSHIFT,\n"
+				"\tREDUCE,\n"
+				"\tACCEPT\n"
+				"};\n\n"
+				"struct Action {\n"
+				"\tActionType type;\n"
+				"\tsize_t value;\n"
+				"};\n\n"
+// end define ActionType enum, and Action struct
+
+// start actionTable definition
+				"std::unordered_map<std::pair<size_t, Token>, Action, PairHash> actionTable {\n\t";
+		col = 0;
+		total = actionTable.size();
+		for (auto& entry : actionTable) {
+			file << "{{ " << entry.first.first << ", " << entry.first.second << " }, {";
+			switch (entry.second.type) {
+			case SHIFT:
+				file << "SHIFT, ";
+				break;
+			case REDUCE:
+				file << "REDUCE, ";
+				break;
+			case ACCEPT:
+				file << "ACCEPT, ";
+				break;
+			}
+			file << entry.second.value << " }";
+			++col;
+			if (col == total) file << "}\n};\n\n";
+			else if (!(col % 2)) file << "},\n\t";
+			else if (col < total) file << "}, ";
+		}
+// end actionTable definition
+
+// start gotoTable definition
+		file << "std::unordered_map<std::pair<size_t, std::string_view>, size_t, PairHash> gotoTable {\n\t";
+		col = 0;
+		total = gotoTable.size();
+		for (auto& entry : gotoTable) {
+			file << "{{ " << entry.first.first << ", *strings.find(\"" << entry.first.second << "\") }, {" << entry.second << "}";
+			++col;
+			if (col == total) file << "}\n};";
+			else if (!(col % 2)) file << "},\n\t";
+			else if (col < total) file << "}, ";
+		}
+// end gotoTabe definition
 	}
 };
 
