@@ -409,7 +409,8 @@ public:
 					}
 					else if (line == "") {
 						parsing_terminals = false;
-						parsing_productions = true;
+						if (!error_in_get_terminals_and_productions) parsing_productions = true;
+						//parsing_productions = true;
 					}
 					else {
 						error_in_get_terminals_and_productions = true;
