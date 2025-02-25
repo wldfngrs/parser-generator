@@ -56,7 +56,25 @@ class ParserGen {
 		}
 	};
 
-	struct ItemHash {
+	//TODO: Combine all of the hashes into a single hash struct for compile time polymorphism/function overloading
+
+	struct MapHash {
+		// PairHash: std::pair<size_t, std::string_view>
+		size_t operator()(const std::pair<size_t, std::string_view>& pair) const {
+			return std::hash<size_t>{}(pair.first) ^ std::hash<std::string_view>{}(pair.second);
+		}
+
+		// PairHash: std::pair<std::string_view, size_t>
+		size_t operator()(const std::pair<std::string_view, size_t>& pair) const {
+			return std::hash<std::string_view>{}(pair.first) ^ std::hash<size_t>{}(pair.second);
+		}
+
+		// TerminalHash
+		size_t operator()(const Terminal& terminal) const {
+			return std::hash<std::string_view>{}(terminal.str);
+		}
+
+		// ItemHash
 		size_t operator()(const Item& item) const {
 			std::string out;
 			for (auto p : item.production) {
@@ -66,34 +84,15 @@ class ParserGen {
 			out += item.lookahead;
 			return std::hash<std::string>{}(out) ^ std::hash<size_t>{}(item.position);
 		}
-	};
 
-	struct CanonicalCollectionHash {
-		size_t operator()(const std::unordered_set<Item, ItemHash>& c) const {
+		// CanonicalCollectionHash
+		size_t operator()(const std::unordered_set<Item, MapHash>& c) const {
 			size_t out = 1;
 			for (auto& item : c) {
-				out ^= ItemHash()(item);
+				out ^= MapHash()(item);
 			}
 
 			return out;
-		}
-	};
-
-	//TODO: Combine all of the hashes into a single hash struct for compile time polymorphism/function overloading
-
-	struct PairHash {
-		size_t operator()(const std::pair<size_t, std::string_view>& pair) const {
-			return std::hash<size_t>{}(pair.first) ^ std::hash<std::string_view>{}(pair.second);
-		}
-
-		size_t operator()(const std::pair<std::string_view, size_t>& pair) const {
-			return std::hash<std::string_view>{}(pair.first) ^ std::hash<size_t>{}(pair.second);
-		}
-	};
-
-	struct TerminalHash {
-		size_t operator()(const Terminal& terminal) const {
-			return std::hash<std::string_view>{}(terminal.str);
 		}
 	};
 
@@ -121,7 +120,6 @@ class ParserGen {
 				else if (!(col % 8)) std::cout << "\n";
 				else if (col < terminals.size()) std::cout << ", ";
 			}
-			std::cout << "\n";
 			break;
 		}
 		case NON_TERMINALS: {
@@ -190,7 +188,7 @@ class ParserGen {
 		}
 	}
 
-	void closure_function(std::unordered_set<Item, ItemHash>& canonicalSet_i) {
+	void closure_function(std::unordered_set<Item, MapHash>& canonicalSet_i) {
 		for (auto& item : canonicalSet_i) {
 			if (item.position >= item.production.size()) continue;
 			std::string_view C = item.production[item.position];
@@ -257,8 +255,8 @@ class ParserGen {
 		}
 	}
 
-	void goto_function(const std::unordered_set<Item, ItemHash>& canonicalSet_i, std::string_view symbol,
-		std::unordered_set<Item, ItemHash>& moved) {
+	void goto_function(const std::unordered_set<Item, MapHash>& canonicalSet_i, std::string_view symbol,
+		std::unordered_set<Item, MapHash>& moved) {
 		for (auto& item : canonicalSet_i) {
 			if (item.position < item.production.size() &&
 				item.production[item.position] == symbol)
@@ -293,25 +291,23 @@ class ParserGen {
 	// first: symbol to reduce to, second: number of symbols to pop off the stack
 	std::vector<std::pair<std::string_view, size_t>> reduce_info;
 
-	std::unordered_set<Terminal, TerminalHash> terminals;
+	std::unordered_set<Terminal, MapHash> terminals;
 	std::unordered_set<std::string_view> non_terminals;
 	std::unordered_map<std::string_view, std::string_view> first_cache;
 
 	std::string grammar_txt;
 	std::string_view goal_production_lookahead_symbol;
 	std::string_view goal_lhs_symbol;
-	// Key: Set of items
-	// Value: marked/unmarked-ness of set, index of set]
+
 	struct CanonicalCollectionValue {
 		size_t state;
 		bool marked;
 	};
 
-	std::unordered_map<std::unordered_set<Item, ItemHash>, CanonicalCollectionValue, CanonicalCollectionHash> canonicalCollection;
+	std::unordered_map<std::unordered_set<Item, MapHash>, CanonicalCollectionValue, MapHash> canonicalCollection;
 
-	// std::unordered_map<std::pair<size_t, TokenType>, Action, PairHash> actionTable;
-	std::unordered_map<std::pair<size_t, std::string_view>, Action, PairHash> actionTable;
-	std::unordered_map<std::pair<size_t, std::string_view>, size_t, PairHash> gotoTable;
+	std::unordered_map<std::pair<size_t, std::string_view>, Action, MapHash> actionTable;
+	std::unordered_map<std::pair<size_t, std::string_view>, size_t, MapHash> gotoTable;
 
 public:
 	bool debug = true;
@@ -334,7 +330,6 @@ public:
 	}
 
 	void get_terminals_and_productions() {
-		// TODO: stop parsing if error count exceeds a certain amount.
 		// TODO: don't attempt parsing productions if error is found while parsing terminals.
 		auto start_txt = 0;
 		std::string line;
@@ -511,7 +506,7 @@ public:
 	}
 
 	void build_cc() {
-		std::unordered_set<Item, ItemHash> canonicalSet_0;
+		std::unordered_set<Item, MapHash> canonicalSet_0;
 		auto& goal = productions[goal_lhs_symbol];
 		for (auto& production : goal) {
 			std::vector<std::string_view> beginItemProd;
@@ -537,7 +532,7 @@ public:
 				if (canonicalSet_i.second.marked == false) {
 					canonicalSet_i.second.marked = true;
 					for (auto& item : canonicalSet_i.first) {
-						std::unordered_set<Item, ItemHash> new_set;
+						std::unordered_set<Item, MapHash> new_set;
 						if (item.position >= item.production.size()) continue;
 						goto_function(canonicalSet_i.first, item.production[item.position], new_set);
 
@@ -565,7 +560,7 @@ public:
 	// routine. For my sanity. I just need to feel like I'm making progress here.
 	void build_tables() {
 		// Key [first: symbol to be reduced to, second: number of symbols to be popped off the stack at the reduction] Value [the index of the key in 'reduce_info' vector] 
-		std::unordered_map<std::pair<std::string_view, size_t>, size_t, PairHash> reduce_info_map;
+		std::unordered_map<std::pair<std::string_view, size_t>, size_t, MapHash> reduce_info_map;
 
 		for (auto& canonicalSet_i : canonicalCollection) {
 			for (auto& item : canonicalSet_i.first) {
@@ -574,7 +569,7 @@ public:
 				if (item.position < item.production.size() &&
 					terminals.count(Terminal(item.production[item.position], 0, "n")))
 				{
-					std::unordered_set<Item, ItemHash> next_set;
+					std::unordered_set<Item, MapHash> next_set;
 					std::string_view terminal = item.production[item.position];
 					goto_function(canonicalSet_i.first, terminal, next_set);
 					if (canonicalCollection.count(next_set)) {
@@ -670,7 +665,7 @@ public:
 								}
 							}
 							else {
-								std::unordered_set<Item, ItemHash> next_set;
+								std::unordered_set<Item, MapHash> next_set;
 								goto_function(canonicalSet_i.first, item.lookahead, next_set);
 								if (canonicalCollection.count(next_set)) {
 									auto next_state = canonicalCollection[next_set].state;
@@ -685,7 +680,7 @@ public:
 			}
 
 			for (auto& non_term : non_terminals) {
-				std::unordered_set<Item, ItemHash> next_set;
+				std::unordered_set<Item, MapHash> next_set;
 				goto_function(canonicalSet_i.first, non_term, next_set);
 				if (canonicalCollection.count(next_set)) {
 					auto next_state = canonicalCollection[next_set].state;
@@ -831,5 +826,5 @@ int main(int argc, char** argv) {
 
 	parserGen.build_cc();
 	parserGen.build_tables();
-	parserGen.build_output_file();
+	//parserGen.build_output_file();
 }
