@@ -197,33 +197,24 @@ class ParserGen {
 			std::unordered_set<std::string_view> first;
 			if ((item.position + 1) < item.production.size()) {
 				std::string_view symbol = item.production[item.position + 1];
-				if (terminals.count(Terminal(symbol, 0, "n")) == 1) {
+				if (terminals.count(Terminal(symbol, 0, "n"))) {
 					// if rhs symbol is a terminal
 					first.insert(symbol);
 				}
-				else if (productions.count(symbol) == 1) {
+				else if (productions.count(symbol)) {
 					// if rhs symbol is a non-terminal
-					// check if symbol is in "first" cache
-					if (first_cache.count(symbol) == 1) {
-						// yes
-						first.insert(first_cache[symbol]);
-					}
-					else {
-						// no
-						std::vector<std::string_view> rhs = productions[symbol];
+					std::vector<std::string_view> rhs = productions[symbol];
 
-						for (auto& r : rhs) {
-							for (auto i = 0; i < r.size(); i++) {
-								if (r[i] == ' ') {
-									std::string temp = std::string(r, 0, i);
-									if (terminals.count(Terminal(temp, 0, "n")) == 1) {
-										first.insert(*strings.find(temp));
-										first_cache[*strings.find(temp)] = *strings.find(temp);
-										break;
-									}
-								}
-							}
-						}
+					for (auto& r : rhs) {
+						//for (auto i = 0; i < r.size(); i++) {
+						//	if (is_whitespace(r[i])) {
+						//		std::string temp = std::string(r, 0, i);
+						//		if (terminals.count(Terminal(temp, 0, "n")) == 1) {
+						//			first.insert(*strings.find(temp));
+						//			break;
+						//		}
+						//	}
+						//}
 					}
 				}
 			}
@@ -241,7 +232,7 @@ class ParserGen {
 				auto start = 0;
 				auto i = 0;
 				for (; i < prod.size(); i++) {
-					if (prod[i] == ' ') {
+					if (is_whitespace(prod[i])) {
 						cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
 						start = i + 1;
 					}
@@ -288,12 +279,14 @@ class ParserGen {
 	// "Pair" : {{"t_lp Pair t_rp"}, {"t_lp t_rp"}}
 	std::unordered_map<std::string_view, std::vector<std::string_view>> productions;
 
+	// The terminals that appear first in every possible production
+	std::unordered_map<std::string_view, std::unordered_set<std::string_view>> firsts;
+
 	// first: symbol to reduce to, second: number of symbols to pop off the stack
 	std::vector<std::pair<std::string_view, size_t>> reduce_info;
 
 	std::unordered_set<Terminal, MapHash> terminals;
 	std::unordered_set<std::string_view> non_terminals;
-	std::unordered_map<std::string_view, std::string_view> first_cache;
 
 	std::string grammar_txt;
 	std::string_view goal_production_lookahead_symbol;
@@ -446,11 +439,17 @@ public:
 						continue;
 					}
 
-					start = j;
+					auto symbol_start = start = j;
 					// ensure that only a single whitespace between consecutive symbols
 					auto whitespace_count = 0;
+					bool found_first = false;
 					for (; j < line.size(); j++) {
 						if (is_whitespace(line[j])) {
+							// check if lhs symbol after whitespace is a terminal
+							if (!found_first && terminals.count(Terminal(std::string(line, symbol_start, j - symbol_start), 0, "n"))) {
+								found_first = true;
+								firsts[*strings.find(lhs)].insert(*strings.find(std::string(line, symbol_start, j - symbol_start)));
+							}
 							whitespace_count++;
 							if (whitespace_count > 1) {
 								error_in_get_terminals_and_productions = true;
@@ -458,10 +457,17 @@ public:
 									<< "[Line " << l_no << "]: " << line << "\n\n";
 								break;
 							}
+							symbol_start = j + 1;
 						}
 						else {
 							whitespace_count = 0;
 						}
+					}
+
+					// first check if rightmost lhs symbol is a terminal, if found first is still false
+					if (!found_first && terminals.count(Terminal(std::string(line, symbol_start, j - symbol_start), 0, "n"))) {
+						found_first = true;
+						firsts[*strings.find(lhs)].insert(*strings.find(std::string(line, symbol_start, j - symbol_start)));
 					}
 
 					// Test if lhs or rhs can come up empty.
