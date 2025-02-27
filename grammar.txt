@@ -1,6 +1,6 @@
 t_EOF
 t_LP
-RP
+t_RP
 
 Goal > List
 List > List Pair
