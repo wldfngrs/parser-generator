@@ -194,33 +194,28 @@ class ParserGen {
 			std::string_view C = item.production[item.position];
 
 			// generate [first] for item
-			std::unordered_set<std::string_view> first;
-			if ((item.position + 1) < item.production.size()) {
-				std::string_view symbol = item.production[item.position + 1];
-				if (terminals.count(Terminal(symbol, 0, "n"))) {
-					// if rhs symbol is a terminal
-					first.insert(symbol);
-				}
-				else if (productions.count(symbol)) {
-					// if rhs symbol is a non-terminal
-					std::vector<std::string_view> rhs = productions[symbol];
+			std::unordered_set<std::string_view> item_firsts;
 
-					for (auto& r : rhs) {
-						//for (auto i = 0; i < r.size(); i++) {
-						//	if (is_whitespace(r[i])) {
-						//		std::string temp = std::string(r, 0, i);
-						//		if (terminals.count(Terminal(temp, 0, "n")) == 1) {
-						//			first.insert(*strings.find(temp));
-						//			break;
-						//		}
-						//	}
-						//}
+			for (auto i = item.position + 1; i < item.production.size(); i++) {
+				std::string_view symbol = item.production[i];
+				if (terminals.count(Terminal(symbol, 0, "n"))) {
+					item_firsts.insert(symbol);
+					break;
+				}
+				else if (productions.count(symbol)){
+					std::unordered_set<std::string_view> initial_terminals = firsts[symbol];
+					for (auto& initial_term : initial_terminals) {
+						item_firsts.insert(initial_term);
+					}
+
+					if (!item_firsts.empty()) {
+						break;
 					}
 				}
 			}
 
-			if (first.empty()) {
-				first.insert(item.lookahead);
+			if (item_firsts.empty()) {
+				item_firsts.insert(item.lookahead);
 			}
 
 			// Rest of closure algorithm
@@ -239,7 +234,7 @@ class ParserGen {
 				}
 				cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
 
-				for (auto& b : first) {
+				for (auto& b : item_firsts) {
 					canonicalSet_i.emplace(1, cItemProd, b);
 				}
 			}
