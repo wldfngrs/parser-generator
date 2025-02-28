@@ -5,7 +5,6 @@
 #include <string_view>
 #include <map>
 #include <vector>
-#include <variant>
 #include <unordered_set>
 #include <unordered_map>
 
@@ -91,10 +90,12 @@ class ParserGen {
 			for (auto& item : c) {
 				out ^= CustomHash()(item);
 			}
-
+			
 			return out;
 		}
 	};
+
+	std::vector<size_t> hashes;
 
 	enum ActionType {
 		SHIFT,
@@ -189,53 +190,61 @@ class ParserGen {
 	}
 
 	void closure_function(std::unordered_set<Item, CustomHash>& canonicalSet_i) {
-		for (auto& item : canonicalSet_i) {
-			if (item.position >= item.production.size()) continue;
-			std::string_view C = item.production[item.position];
+		auto recorded_size = 0;
+		std::unordered_set<Item, CustomHash> processed_items;
+		while (canonicalSet_i.size() > recorded_size) {
+			recorded_size = canonicalSet_i.size();
+			for (auto& item : canonicalSet_i) {
+				if (processed_items.count(item)) continue;
+				else processed_items.insert(item);
+				
+				if (item.position >= item.production.size()) continue;
+				std::string_view C = item.production[item.position];
 
-			// generate [first] for item
-			std::unordered_set<std::string_view> item_firsts;
+				// generate [first] for item
+				std::unordered_set<std::string_view> item_firsts;
 
-			for (auto i = item.position + 1; i < item.production.size(); i++) {
-				std::string_view symbol = item.production[i];
-				if (terminals.count(Terminal(symbol, 0, "n"))) {
-					item_firsts.insert(symbol);
-					break;
-				}
-				else if (productions.count(symbol)){
-					std::unordered_set<std::string_view> initial_terminals = firsts[symbol];
-					for (auto& initial_term : initial_terminals) {
-						item_firsts.insert(initial_term);
-					}
-
-					if (!item_firsts.empty()) {
+				for (auto i = item.position + 1; i < item.production.size(); i++) {
+					std::string_view symbol = item.production[i];
+					if (terminals.count(Terminal(symbol, 0, "n"))) {
+						item_firsts.insert(symbol);
 						break;
 					}
-				}
-			}
+					else if (productions.count(symbol)) {
+						std::unordered_set<std::string_view> initial_terminals = firsts[symbol];
+						for (auto& initial_term : initial_terminals) {
+							item_firsts.insert(initial_term);
+						}
 
-			if (item_firsts.empty()) {
-				item_firsts.insert(item.lookahead);
-			}
-
-			// Rest of closure algorithm
-			std::vector<std::string_view> rhs = productions[C];
-
-			for (auto& prod : rhs) {
-				std::vector<std::string_view> cItemProd{ C };
-
-				auto start = 0;
-				auto i = 0;
-				for (; i < prod.size(); i++) {
-					if (is_whitespace(prod[i])) {
-						cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
-						start = i + 1;
+						if (!item_firsts.empty()) {
+							break;
+						}
 					}
 				}
-				cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
 
-				for (auto& b : item_firsts) {
-					canonicalSet_i.emplace(1, cItemProd, b);
+				if (item_firsts.empty()) {
+					item_firsts.insert(item.lookahead);
+				}
+
+				// Rest of closure algorithm
+				std::vector<std::string_view> rhs = productions[C];
+
+				for (auto& prod : rhs) {
+					std::vector<std::string_view> cItemProd{ C };
+
+					auto start = 0;
+					auto i = 0;
+					for (; i < prod.size(); i++) {
+						if (is_whitespace(prod[i])) {
+							cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
+							start = i + 1;
+						}
+					}
+					cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
+
+					for (auto& b : item_firsts) {
+						canonicalSet_i.emplace(1, cItemProd, b);
+					}
 				}
 			}
 		}
@@ -536,7 +545,7 @@ public:
 						if (item.position >= item.production.size()) continue;
 						goto_function(canonicalSet_i.first, item.production[item.position], new_set);
 
-						if (canonicalCollection.count(new_set) == 0) {
+						if (!canonicalCollection.count(new_set)) {
 							++set_index;
 							ccv = { set_index, false };
 							canonicalCollection.emplace(new_set, ccv);
@@ -702,7 +711,7 @@ public:
 			"#include <unordered_set>\n"
 			"#include <string>"
 			"#include <vector>\n\n"
-// start define strings cache
+			// start define strings cache
 			"std::unordered_set<std::string> strings {\n\t";
 		auto col = 0;
 		auto total = non_terminals.size();
@@ -713,9 +722,9 @@ public:
 			else if (!(col % 8)) file << ",\n\t";
 			else if (col < total) file << ", ";
 		}
-// end define strings cache
+		// end define strings cache
 
-// start define terminals enum
+		// start define terminals enum
 		col = 0;
 		total = terminals.size();
 		file << "enum Token {\n\t";
@@ -726,9 +735,9 @@ public:
 			if (!(col % 8)) file << ",\n\t";
 			else if (col < total) file << ", ";
 		}
-// end define terminals enum
+		// end define terminals enum
 
-// start define reduce_info vector
+		// start define reduce_info vector
 		col = 0;
 		total = reduce_info.size();
 		file << "std::vector<std::pair<std::string_view, size_t>> reduce_info {\n\t";
@@ -739,33 +748,33 @@ public:
 			else if (!(col % 2)) file << ",\n\t";
 			else if (col < total) file << ", ";
 		}
-// end define reduce_info vector
+		// end define reduce_info vector
 
-// start define PairHash for hashing the key to the actionTable unordered_map, and gotoTable unordered_map
+		// start define PairHash for hashing the key to the actionTable unordered_map, and gotoTable unordered_map
 		file << "struct PairHash {\n"
-				"\tsize_t operator()(const std::pair<size_t, std::string_view>& pair) const {\n"
-				"\t\treturn std::hash<size_t>{}(pair.first) ^ std::hash<std::string_view>{}(pair.second);\n"
-				"\t}\n\n"
-				"\tsize_t operator()(const std::pair<size_t, Token>& pair) const {\n"
-				"\t\treturn std::hash<size_t>{}(pair.first) ^ pair.second;\n"
-				"\t}\n"
-				"};\n\n";
-// end define PairHash
+			"\tsize_t operator()(const std::pair<size_t, std::string_view>& pair) const {\n"
+			"\t\treturn std::hash<size_t>{}(pair.first) ^ std::hash<std::string_view>{}(pair.second);\n"
+			"\t}\n\n"
+			"\tsize_t operator()(const std::pair<size_t, Token>& pair) const {\n"
+			"\t\treturn std::hash<size_t>{}(pair.first) ^ pair.second;\n"
+			"\t}\n"
+			"};\n\n";
+		// end define PairHash
 
-// start define ActionType enum, and Action struct
+		// start define ActionType enum, and Action struct
 		file << "enum ActionType {\n"
-				"\tSHIFT,\n"
-				"\tREDUCE,\n"
-				"\tACCEPT\n"
-				"};\n\n"
-				"struct Action {\n"
-				"\tActionType type;\n"
-				"\tsize_t value;\n"
-				"};\n\n"
-// end define ActionType enum, and Action struct
+			"\tSHIFT,\n"
+			"\tREDUCE,\n"
+			"\tACCEPT\n"
+			"};\n\n"
+			"struct Action {\n"
+			"\tActionType type;\n"
+			"\tsize_t value;\n"
+			"};\n\n"
+			// end define ActionType enum, and Action struct
 
-// start actionTable definition
-				"std::unordered_map<std::pair<size_t, Token>, Action, PairHash> actionTable {\n\t";
+			// start actionTable definition
+			"std::unordered_map<std::pair<size_t, Token>, Action, PairHash> actionTable {\n\t";
 		col = 0;
 		total = actionTable.size();
 		for (auto& entry : actionTable) {
@@ -787,9 +796,9 @@ public:
 			else if (!(col % 2)) file << "},\n\t";
 			else if (col < total) file << "}, ";
 		}
-// end actionTable definition
+		// end actionTable definition
 
-// start gotoTable definition
+		// start gotoTable definition
 		file << "std::unordered_map<std::pair<size_t, std::string_view>, size_t, PairHash> gotoTable {\n\t";
 		col = 0;
 		total = gotoTable.size();
@@ -800,7 +809,7 @@ public:
 			else if (!(col % 2)) file << "},\n\t";
 			else if (col < total) file << "}, ";
 		}
-// end gotoTabe definition
+		// end gotoTabe definition
 	}
 };
 
