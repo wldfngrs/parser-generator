@@ -31,9 +31,10 @@ class ParserGen {
 		size_t position;
 		std::vector<std::string_view> production;
 		std::string_view lookahead;
+		int production_precedence;
 
-		Item(size_t pos, std::vector<std::string_view> prod, std::string_view la)
-			: position{ pos }, production{ prod }, lookahead{ la } {}
+		Item(size_t pos, std::vector<std::string_view> prod, std::string_view la, int prod_prec)
+			: position{ pos }, production{ prod }, lookahead{ la }, production_precedence{ prod_prec } {}
 
 		bool operator==(const Item& other) const {
 			return position == other.position &&
@@ -44,10 +45,10 @@ class ParserGen {
 
 	struct Terminal {
 		std::string_view str;
-		size_t precedence;
+		int precedence;
 		std::string associativity; // l (left-associative), r (right-associative), n (non-associative)
 
-		Terminal(std::string_view t_term, size_t prec, std::string assoc) :
+		Terminal(std::string_view t_term, int prec, std::string assoc) :
 			str(t_term), precedence(prec), associativity(assoc) {}
 
 		bool operator==(const Terminal& other) const {
@@ -234,16 +235,22 @@ class ParserGen {
 
 					auto start = 0;
 					auto i = 0;
+					std::string symbol;
 					for (; i < prod.size(); i++) {
 						if (is_whitespace(prod[i])) {
-							cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
+							symbol = std::string(prod, start, i - start);
+							if (symbol != "") {
+								cItemProd.push_back(*strings.find(symbol));
+							}
 							start = i + 1;
 						}
 					}
-					cItemProd.push_back(*strings.find(std::string(prod, start, i - start)));
+					
+					symbol = std::string(prod, start, i - start);
+					if (symbol != "") cItemProd.push_back(*strings.find(symbol));
 
 					for (auto& b : item_firsts) {
-						canonicalSet_i.emplace(1, cItemProd, b);
+						canonicalSet_i.emplace(1, cItemProd, b, production_precedence[prod]);
 					}
 				}
 			}
@@ -257,7 +264,7 @@ class ParserGen {
 				item.production[item.position] == symbol)
 			{
 				auto new_item_position = item.position + 1;
-				moved.emplace(new_item_position, item.production, item.lookahead);
+				moved.emplace(new_item_position, item.production, item.lookahead, item.production_precedence);
 			}
 		}
 
@@ -282,6 +289,9 @@ class ParserGen {
 	// "List" : {{"List Pair"}, {"Pair"}}
 	// "Pair" : {{"t_lp Pair t_rp"}, {"t_lp t_rp"}}
 	std::unordered_map<std::string_view, std::vector<std::string_view>> productions;
+
+	// All production rhs have 0 precedence as default. If explicitly set, however, the precedence is stored as stated.
+	std::unordered_map<std::string_view, int> production_precedence;
 
 	// The terminals that appear first in every possible production
 	std::unordered_map<std::string_view, std::unordered_set<std::string_view>> firsts;
@@ -308,7 +318,6 @@ class ParserGen {
 
 public:
 	bool debug = true;
-	bool error_in_get_terminals_and_productions = false;
 	bool file_access_error = false;
 
 	ParserGen(std::string path_to_grammar) {
@@ -326,12 +335,13 @@ public:
 		file.close();
 	}
 
-	void get_terminals_and_productions() {
+	bool get_terminals_and_productions() {
 		auto start_txt = static_cast<size_t>(0);
 		std::string line;
 		size_t l_no = 1; // solely for error-reporting
 		bool parsing_terminals = true;
 		bool parsing_productions = false;
+		bool error_in_get_terminals_and_productions = false;
 		std::unordered_map<std::string, std::string> right_deriv;
 
 		for (size_t i = 0; i < grammar_txt.length(); i++) {
@@ -347,17 +357,17 @@ public:
 						auto j = 2;
 						auto start = 0;
 
-						if (j >= line.size()) {
+						if (j == line.size()) {
 							error_in_get_terminals_and_productions = true;
-							std::cout << "Error: Incomplete terminal symbol declaration.\n"
-								<< "[Line " << l_no << "]: " << line << "\n\n";
+							std::cout << "\nError: Incomplete terminal symbol declaration.\n"
+								<< "[Line " << l_no << "]: " << line << "\n";
 							continue;
 						}
 
-						while (j++ < line.size()) {
+						for (; j < line.size(); j++) {
 							if (is_whitespace(line[j])) {
-								std::string temp = std::string(line, start, line.size() - start);
-								if (temp != "") term_info.emplace_back(line, start, line.size() - start);
+								std::string temp = std::string(line, start, j - start);
+								if (temp != "") term_info.emplace_back(line, start, j - start);
 								start = j + 1;
 							}
 
@@ -373,26 +383,69 @@ public:
 						}
 						else if (term_info.size() == 2) {
 							strings.insert(term_info[0]);
-							if (term_info[1] == "n" || term_info[1] == "l" || term_info[1] == "r") {
-								terminals.emplace(*strings.find(term_info[0]), 0, term_info[1]);
+
+							int prec = 0;
+							std::string associativity;
+							try {
+								prec = std::stoi(term_info[1]);
 							}
-							terminals.emplace(*strings.find(term_info[0]), std::stoi(term_info[1]), "n");
+							catch (std::invalid_argument const& ex) {
+								if (term_info[1] == "n" || term_info[1] == "l" || term_info[1] == "r") {
+									//terminals.emplace(*strings.find(term_info[0]), 0, term_info[1]);
+									associativity = term_info[1];
+								} else {
+									error_in_get_terminals_and_productions = true;
+									std::cout << (is_alpha(term_info[1][0]) ? 
+												// is alphabet
+												"\nCaughtException: Invalid non-integer argument to precedence field: '" : 
+												// not-alphabet
+												"Error: Terminal associativity field can only be one of : 'r' (right - associative), 'l' (left - associative), 'n' (non - associative)\n")
+											<< term_info[1] << "'\n"
+											<< "[Line " << l_no << "]: " << line << "\n";
+									continue;
+								}
+							}
+							catch (std::out_of_range const& ex) {
+								error_in_get_terminals_and_productions = true;
+								std::cout << "\nCaughtException: Argument to precedence field exceeds integer range: '" << term_info[1] << "'\n"
+									<< "[Line " << l_no << "]: " << line << "\n";
+								continue;
+							}
+
+							terminals.emplace(*strings.find(term_info[0]), prec, associativity);
 						}
 						else if (term_info.size() == 3) {
 							if (term_info[2] != "n" && term_info[2] != "l" && term_info[2] != "r") {
 								error_in_get_terminals_and_productions = true;
-								std::cout << "Error: Terminal associativity field can only be one of: 'r' (right-associative), 'l' (left-associative), 'n' (non-associative)\n"
-									<< "[Line " << l_no << "]: " << line << "\n\n";
-								continue;
+								std::cout << "\nError: Terminal associativity field can only be one of: 'r' (right-associative), 'l' (left-associative), 'n' (non-associative)\n"
+									<< "[Line " << l_no << "]: " << line << "\n";
 							}
 
 							strings.insert(term_info[0]);
-							terminals.emplace(*strings.find(term_info[0]), std::stoi(term_info[1]), term_info[2]);
+							
+							int prec = 0;
+							try {
+								prec = std::stoi(term_info[1]);
+							}
+							catch (std::invalid_argument const& ex) {
+								error_in_get_terminals_and_productions = true;
+								std::cout << "\nCaughtException: Invalid non-integer argument to precedence field: '" << term_info[1] << "'\n"
+									<< "[Line " << l_no << "]: " << line << "\n";
+								continue;
+							}
+							catch (std::out_of_range const& ex) {
+								error_in_get_terminals_and_productions = true;
+								std::cout << "\nCaughtException: Argument to precedence field exceeds integer range: '" << term_info[1] << "'\n"
+									<< "[Line " << l_no << "]: " << line << "\n";
+								continue;
+							}
+							
+							terminals.emplace(*strings.find(term_info[0]), prec, term_info[2]);
 						}
 						else {
 							error_in_get_terminals_and_productions = true;
-							std::cout << "Error: Terminal symbol declaration information should not contain more than three fields (or two whitespace characters)! \n"
-								<< "[Line " << l_no << "]: " << line << "\n\n";
+							std::cout << "\nError: Terminal symbol declaration information should not contain more than three fields\n"
+								<< "[Line " << l_no << "]: " << line << "\n";
 							continue;
 						}
 
@@ -401,19 +454,18 @@ public:
 					else if (line == "") {
 						parsing_terminals = false;
 						if (!error_in_get_terminals_and_productions) parsing_productions = true;
-						//parsing_productions = true;
 					}
 					else {
 						error_in_get_terminals_and_productions = true;
-						std::cout << "Error: Terminal symbols must be declared with a 't_' prefix.\n"
-							<< "[Line " << l_no++ << "]: " << line << "\n\n";
+						std::cout << "\nError: Terminal symbols must be declared with a 't_' prefix.\n"
+							<< "[Line " << l_no++ << "]: " << line << "\n";
 					}
 				}
 				else if (parsing_productions) {
 					if (line[0] == 't' && line[1] == '_') {
 						error_in_get_terminals_and_productions = true;
-						std::cout << "Error: Terminal symbols ('t_' prefix) cannot be on the LHS of a production rule\n"
-							<< "[Line " << l_no++ << "]: " << line << "\n\n";
+						std::cout << "\nError: Terminal symbols ('t_' prefix) cannot be on the LHS of a production rule\n"
+							<< "[Line " << l_no++ << "]: " << line << "\n";
 						continue;
 					}
 					else if (line == "") {
@@ -437,37 +489,27 @@ public:
 
 					if (delim != " > ") {
 						error_in_get_terminals_and_productions = true;
-						std::cout << "Error: Expected ' > ' delimiter between LHS and RHS of production rule\n"
-							<< "[Line " << l_no++ << "]: " << line << "\n\n";
+						std::cout << "\nError: Expected ' > ' delimiter between LHS and RHS of production rule\n"
+							<< "[Line " << l_no++ << "]: " << line << "\n";
 						continue;
 					}
 
 					auto symbol_start = start = j;
-					// ensure that only a single whitespace between consecutive symbols
-					auto whitespace_count = 0;
 					bool found_first = false;
+					// Check for leftmost terminal in rhs of production
 					for (; j < line.size(); j++) {
 						if (is_whitespace(line[j])) {
-							// check if lhs symbol after whitespace is a terminal
 							if (!found_first && terminals.count(Terminal(std::string(line, symbol_start, j - symbol_start), 0, "n"))) {
 								found_first = true;
 								firsts[*strings.find(lhs)].insert(*strings.find(std::string(line, symbol_start, j - symbol_start)));
 							}
-							whitespace_count++;
-							if (whitespace_count > 1) {
-								error_in_get_terminals_and_productions = true;
-								std::cout << "Error: Grammar production rhs should not contain more than one whitespace between grammar symbols.\n"
-									<< "[Line " << l_no << "]: " << line << "\n\n";
-								break;
-							}
 							symbol_start = j + 1;
 						}
-						else {
-							whitespace_count = 0;
-						}
+
+						if (found_first) break;
 					}
 
-					// first check if rightmost lhs symbol is a terminal, if found first is still false
+					// if 'found_first' is still false, check if rightmost rhs symbol is a terminal
 					if (!found_first && terminals.count(Terminal(std::string(line, symbol_start, j - symbol_start), 0, "n"))) {
 						found_first = true;
 						firsts[*strings.find(lhs)].insert(*strings.find(std::string(line, symbol_start, j - symbol_start)));
@@ -475,33 +517,58 @@ public:
 
 					// Test if lhs or rhs can come up empty.
 					std::string rhs(line, start, line.size() - start);
-					if (whitespace_count == 0) {
-						if (right_deriv.count(rhs)) {
-							error_in_get_terminals_and_productions = true;
-							std::cout << "Error: Grammar production has a potential REDUCE-REDUCE conflict.\n"
-								<< "[Line " << l_no << "]: " << line << " AND "
-								<< right_deriv[rhs] << " > " << rhs << "\n\n";
-							continue;
-						}
 
-						if (rhs == "") {
-							error_in_get_terminals_and_productions = true;
-							std::cout << "Error: Grammar production rhs is empty. Ill-defined grammar.\n"
-								<< "[Line " << l_no << "]: " << line << "\n\n";
-							continue;
-						}
-						strings.insert(rhs);
-						strings.insert(lhs);
-
-						right_deriv[*strings.find(rhs)] = *strings.find(lhs);
-						productions[*strings.find(lhs)].push_back(*strings.find(rhs));
-					}
-
-					if (is_whitespace(rhs[0])) {
+					if (rhs == "") {
 						error_in_get_terminals_and_productions = true;
-						std::cout << "Error: Grammar production rhs is empty (cannont start with whitespace). Ill-defined grammar.\n"
-							<< "[Line " << l_no << "]: " << line << "\n\n";
+						std::cout << "\nError: Grammar production rhs is empty. Ill-defined grammar.\n"
+							<< "[Line " << l_no << "]: " << line << "\n";
+						continue;
 					}
+					
+					if (right_deriv.count(rhs)) {
+						error_in_get_terminals_and_productions = true;
+						std::cout << "\nError: Grammar production has a potential REDUCE-REDUCE conflict.\n"
+							<< "[Line " << l_no << "]: " << line << " AND "
+							<< right_deriv[rhs] << " > " << rhs << "\n";
+						continue;
+					}
+
+					// check for explicitly defined precedence for rule/production
+					int prec = 0;
+					for (auto i = static_cast<int>(rhs.size()); i > 0; i--) {
+						if (is_whitespace(rhs[i])) {
+							std::string symbol = std::string(rhs, i + 1, rhs.size() - i);
+							if (symbol == "") continue;
+
+							try {
+								prec = std::stoi(symbol);
+							}
+							catch (std::invalid_argument const& ex) {
+								// final symbol is not a precedence value
+								break;
+							}
+							catch (std::out_of_range const& ex) {
+								// final symbol is a precedence value but is beyond the integer range
+								error_in_get_terminals_and_productions = true;
+								std::cout << "\nCaughtException: Argument to precedence field exceeds integer range: '" << symbol << "'\n"
+									<< "[Line " << l_no << "]: " << line << "\n";
+								break;
+							}
+
+							// final is a precedence value
+							rhs = std::string(rhs, 0, i);
+							break;
+						}
+					}
+
+					if (error_in_get_terminals_and_productions) continue;
+
+					strings.insert(rhs);
+					strings.insert(lhs);
+
+					right_deriv[*strings.find(rhs)] = *strings.find(lhs);
+					productions[*strings.find(lhs)].push_back(*strings.find(rhs));
+					production_precedence[rhs] = prec;
 				}
 				l_no++;
 			}
@@ -512,16 +579,73 @@ public:
 			print_debug_info(NON_TERMINALS);
 			print_debug_info(PRODUCTIONS);
 		}
+
+		return error_in_get_terminals_and_productions ? false : true;
+	}
+
+	bool check_symbols_in_productions() {
+		bool found_invalid_symbol = false;
+		std::string symbol;
+
+		for (auto& production : productions) {
+			std::vector<std::string_view> values = production.second;
+			for (auto& value : values) {
+				auto start = 0; auto i = 0;
+				for (auto i = 0; i < value.size(); i++) {
+					if (is_whitespace(value[i])) {
+						symbol = std::string(value, start, i - start);
+						if (symbol != "") {
+							if (terminals.find(Terminal(symbol, 0, "n")) == terminals.end() &&
+								non_terminals.find(symbol) == non_terminals.end())
+							{
+								found_invalid_symbol = true;
+								std::cout << "\nError: Unexpected symbol '" << symbol << "'\n"
+									<< "Fix production rule: '" << production.first << " > " << value << "'\n";
+							}
+						}
+						start = i + 1;
+					}
+				}
+
+				symbol = std::string(value, start, value.size() - start);
+				if (symbol != "") {
+					if (terminals.find(Terminal(symbol, 0, "n")) == terminals.end() &&
+						non_terminals.find(symbol) == non_terminals.end())
+					{
+						found_invalid_symbol = true;
+						std::cout << "\nError: Unexpected symbol '" << symbol << "'\n"
+							<< "Fix production rule: '" << production.first << " > " << value << "'\n";
+					}
+				}
+			}
+		}
+
+		return found_invalid_symbol ? false : true;
 	}
 
 	void build_cc() {
 		std::unordered_set<Item, CustomHash> canonicalSet_0;
 		auto& goal = productions[goal_lhs_symbol];
-		for (auto& production : goal) {
+		for (auto& prod : goal) {
 			std::vector<std::string_view> beginItemProd;
+			std::string symbol;
+			auto start = 0;
+			auto i = 0;
 			beginItemProd.push_back(goal_lhs_symbol);
-			beginItemProd.push_back(production);
-			canonicalSet_0.emplace(1, beginItemProd, goal_production_lookahead_symbol);
+			for (; i < prod.size(); i++) {
+				if (is_whitespace(prod[i])) {
+					symbol = std::string(prod, start, i - start);
+					if (symbol != "") {
+						beginItemProd.push_back(*strings.find(symbol));
+					}
+					start = i + 1;
+				}
+			}
+			
+			symbol = std::string(prod, start, i - start);
+			if (symbol != "") beginItemProd.push_back(*strings.find(symbol));
+			
+			canonicalSet_0.emplace(1, beginItemProd, goal_production_lookahead_symbol, production_precedence[prod]);
 		}
 
 		auto number_of_unmarked_sets = 0;
@@ -623,6 +747,21 @@ public:
 						// first handle SHIFT-REDUCE conflicts that require precedence and associativity rules for resolution
 						Terminal last_terminal("", 0, "n"); // set a dummy terminal
 						set_last_terminal(last_terminal, item.production);
+
+						// check for rule/production resolution
+						if (item.production_precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) {
+							std::string_view lhs = item.production[0];
+							if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
+								reduce_info.emplace_back(lhs, item.production.size() - 1);
+								reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
+								Action action{ REDUCE, reduce_info.size() - 1 };
+								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							}
+							else {
+								Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
+								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
+							}
+						}
 
 						if (last_terminal.str == "") {
 							// production rhs has no terminals (production that derives a production)
@@ -828,10 +967,15 @@ int main(int argc, char** argv) {
 		return -1;
 	}
 
-	parserGen.get_terminals_and_productions();
+	if (!parserGen.get_terminals_and_productions()) {
+		std::cout << "\nFatal error in grammar definition. Parser-Generator terminated early.\n";
+		return -1;
+	}
 
-	if (parserGen.error_in_get_terminals_and_productions) {
-		std::cout << "Fatal error in grammar definition. Parser-Generator terminated early.\n";
+	// iterate through the productions data structure and check that every single string is either a terminal or a lhs symbol
+	// else emit error message and exit.
+	if (!parserGen.check_symbols_in_productions()) {
+		std::cout << "\nFatal Error in grammar definition. Parser-Generator terminated early.\n";
 		return -1;
 	}
 
