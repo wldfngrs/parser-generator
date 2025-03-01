@@ -2,7 +2,7 @@
 #include <vector>
 #include <stack>
 
-#include "../output.h"
+#include "../parentheses.h"
 
 static bool is_whitespace(char c) {
 	return (c == ' ' || c == '\r' || c == '\t');
