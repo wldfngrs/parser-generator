@@ -44,7 +44,7 @@ class ParserGen {
 
 	struct Terminal {
 		std::string_view str;
-		int precedence;
+		size_t precedence;
 		std::string associativity; // l (left-associative), r (right-associative), n (non-associative)
 
 		Terminal(std::string_view t_term, size_t prec, std::string assoc) :
@@ -190,7 +190,7 @@ class ParserGen {
 	}
 
 	void closure_function(std::unordered_set<Item, CustomHash>& canonicalSet_i) {
-		auto recorded_size = 0;
+		auto recorded_size = static_cast<size_t>(0);
 		std::unordered_set<Item, CustomHash> processed_items;
 		while (canonicalSet_i.size() > recorded_size) {
 			recorded_size = canonicalSet_i.size();
@@ -327,7 +327,7 @@ public:
 	}
 
 	void get_terminals_and_productions() {
-		auto start_txt = 0;
+		auto start_txt = static_cast<size_t>(0);
 		std::string line;
 		size_t l_no = 1; // solely for error-reporting
 		bool parsing_terminals = true;
@@ -707,9 +707,11 @@ public:
 
 	void build_output_file() {
 		std::ofstream file("output.h", std::ios::out);
-		file << "#include <unordered_map>\n"
+		file << "#pragma once\n\n"
+			"#include <unordered_map>\n"
 			"#include <unordered_set>\n"
-			"#include <string>"
+			"#include <string>\n"
+			"#include <string_view>\n"
 			"#include <vector>\n\n"
 			// start define strings cache
 			"std::unordered_set<std::string> strings {\n\t";
@@ -727,7 +729,7 @@ public:
 		// start define terminals enum
 		col = 0;
 		total = terminals.size();
-		file << "enum Token {\n\t";
+		file << "enum TokenType {\n\t";
 		for (auto& term : terminals) {
 			file << term.str;
 			++col;
@@ -755,7 +757,7 @@ public:
 			"\tsize_t operator()(const std::pair<size_t, std::string_view>& pair) const {\n"
 			"\t\treturn std::hash<size_t>{}(pair.first) ^ std::hash<std::string_view>{}(pair.second);\n"
 			"\t}\n\n"
-			"\tsize_t operator()(const std::pair<size_t, Token>& pair) const {\n"
+			"\tsize_t operator()(const std::pair<size_t, TokenType>& pair) const {\n"
 			"\t\treturn std::hash<size_t>{}(pair.first) ^ pair.second;\n"
 			"\t}\n"
 			"};\n\n";
@@ -774,7 +776,7 @@ public:
 			// end define ActionType enum, and Action struct
 
 			// start actionTable definition
-			"std::unordered_map<std::pair<size_t, Token>, Action, PairHash> actionTable {\n\t";
+			"std::unordered_map<std::pair<size_t, TokenType>, Action, PairHash> actionTable {\n\t";
 		col = 0;
 		total = actionTable.size();
 		for (auto& entry : actionTable) {
@@ -835,5 +837,5 @@ int main(int argc, char** argv) {
 
 	parserGen.build_cc();
 	parserGen.build_tables();
-	//parserGen.build_output_file();
+	parserGen.build_output_file();
 }
