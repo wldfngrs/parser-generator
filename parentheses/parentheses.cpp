@@ -24,7 +24,7 @@ static bool scan_input_to_tokens(std::string& input, std::vector<TokenType>& out
 			output.push_back(TokenType::t_RP);
 			break;
 		default:
-			std::cout << "Invalid token '" << c << "'\n";
+			std::cout << "Unexpected token '" << c << "'\n";
 			scan_error = true;
 		}
 	}
