@@ -119,7 +119,7 @@ class ParserGen {
 				std::cout << "[" << terminal.str << ", " << terminal.precedence << ", " << terminal.associativity << "]";
 				++col;
 				if (col == terminals.size()) std::cout << "\n";
-				else if (!(col % 8)) std::cout << "\n";
+				else if (!(col % 3)) std::cout << "\n";
 				else if (col < terminals.size()) std::cout << ", ";
 			}
 			break;
@@ -132,7 +132,7 @@ class ParserGen {
 				std::cout << non_terminal;
 				++col;
 				if (col == non_terminals.size()) std::cout << "\n";
-				else if (!(col % 8)) std::cout << "\n";
+				else if (!(col % 3)) std::cout << "\n";
 				else if (col < non_terminals.size()) std::cout << ", ";
 			}
 			break;
@@ -266,17 +266,21 @@ class ParserGen {
 				auto new_item_position = item.position + 1;
 				moved.emplace(new_item_position, item.production, item.lookahead, item.production_precedence);
 			}
+
+			if (!reduce_info_map.count(std::make_pair(item.production[0], item.production.size() - 1))) {
+				reduce_info.emplace_back(item.production[0], item.production.size() - 1);
+				reduce_info_map[std::make_pair(item.production[0], item.production.size() - 1)] = reduce_info.size() - 1;
+			}
 		}
 
 		closure_function(moved);
 	}
 
-	void set_last_terminal(Terminal& last_terminal, const std::vector<std::string_view>& item_production) {
+	void set_last_terminal(int& last_terminal_precedence, std::string& last_terminal_associativity, const std::vector<std::string_view>& item_production) {
 		for (auto i = static_cast<int>(item_production.size() - 1); i >= 0; i--) {
 			if (terminals.count(Terminal(item_production[i], 0, "n"))) {
-				last_terminal.str = terminals.find(Terminal(item_production[i], 0, "n"))->str;
-				last_terminal.precedence = terminals.find(Terminal(item_production[i], 0, "n"))->precedence;
-				last_terminal.associativity = terminals.find(Terminal(item_production[i], 0, "n"))->associativity;
+				last_terminal_precedence = terminals.find(Terminal(item_production[i], 0, "n"))->precedence;
+				last_terminal_associativity = terminals.find(Terminal(item_production[i], 0, "n"))->associativity;
 				break;
 			}
 		}
@@ -298,6 +302,9 @@ class ParserGen {
 
 	// first: symbol to reduce to, second: number of symbols to pop off the stack
 	std::vector<std::pair<std::string_view, size_t>> reduce_info;
+	
+	// first: symbol to reduce_info information, second: index into reduce_info array containing this information
+	std::unordered_map<std::pair<std::string_view, size_t>, size_t, CustomHash> reduce_info_map;
 
 	std::unordered_set<Terminal, CustomHash> terminals;
 	std::unordered_set<std::string_view> non_terminals;
@@ -385,7 +392,7 @@ public:
 							strings.insert(term_info[0]);
 
 							int prec = 0;
-							std::string associativity;
+							std::string associativity = "n";
 							try {
 								prec = std::stoi(term_info[1]);
 							}
@@ -568,7 +575,7 @@ public:
 
 					right_deriv[*strings.find(rhs)] = *strings.find(lhs);
 					productions[*strings.find(lhs)].push_back(*strings.find(rhs));
-					production_precedence[rhs] = prec;
+					production_precedence[*strings.find(rhs)] = prec;
 				}
 				l_no++;
 			}
@@ -652,7 +659,7 @@ public:
 		size_t set_index = 0;
 		closure_function(canonicalSet_0);
 		CanonicalCollectionValue ccv{ set_index, false };
-		canonicalCollection.emplace(canonicalSet_0, ccv);
+		canonicalCollection[canonicalSet_0] = ccv;
 
 		// count "unmarked" and keep looping until "unmarked" is equal
 		// to zero. That is, all available sets in canonicalCollection have
@@ -672,7 +679,7 @@ public:
 						if (!canonicalCollection.count(new_set)) {
 							++set_index;
 							ccv = { set_index, false };
-							canonicalCollection.emplace(new_set, ccv);
+							canonicalCollection[new_set] = ccv;
 							++number_of_unmarked_sets;
 						}
 					}
@@ -692,135 +699,96 @@ public:
 	// Instead, here's an implementation that seperates the build_cc() routine from the build_table()
 	// routine. For my sanity. I just need to feel like I'm making progress here.
 	void build_tables() {
-		// Key [first: symbol to be reduced to, second: number of symbols to be popped off the stack at the reduction] Value [the index of the key in 'reduce_info' vector] 
-		std::unordered_map<std::pair<std::string_view, size_t>, size_t, CustomHash> reduce_info_map;
-
 		for (auto& canonicalSet_i : canonicalCollection) {
+			auto current_state = canonicalSet_i.second.state;
+			
 			for (auto& item : canonicalSet_i.first) {
-				// Checking the condition for the SHIFT action first, ensures that in the possible case 
-				// of a base SHIFT-REDUCE conflict the parser-generator favors the SHIFT action.
 				if (item.position < item.production.size() &&
-					terminals.count(Terminal(item.production[item.position], 0, "n")))
+					terminals.count(Terminal(item.production[item.position], 0, "n"))) 
 				{
-					std::unordered_set<Item, CustomHash> next_set;
 					std::string_view terminal = item.production[item.position];
-					goto_function(canonicalSet_i.first, terminal, next_set);
-					if (canonicalCollection.count(next_set)) {
-						auto next_state = canonicalCollection[next_set].state;
-						// add to actionTable that action[i, item.production[item.position]] ==> shift (to) next_state
-						Action action{ SHIFT, next_state };
-						actionTable.emplace(std::make_pair(canonicalSet_i.second.state, terminal), action);
+					// check for SHIFT-REDUCE conflict
+					if (!actionTable.count(std::make_pair(current_state, terminal))) {
+						std::unordered_set<Item, CustomHash> next_set;
+						goto_function(canonicalSet_i.first, terminal, next_set);
+
+						if (canonicalCollection.count(next_set)) {
+							auto next_state = canonicalCollection[next_set].state;
+							Action action{ SHIFT, next_state };
+							actionTable[std::make_pair(current_state, terminal)] = action;
+						}
+					}
+					else if (actionTable.find(std::make_pair(current_state, terminal))->second.type == REDUCE) {
+						// SHIFT-REDUCE Conflict
+						int last_terminal_precedence = 0;
+						std::string last_terminal_associativity = "n";
+						std::string_view item_production_lhs = item.production[0];
+
+						set_last_terminal(last_terminal_precedence, last_terminal_associativity, item.production);
+
+						if (item.production_precedence > terminals.find(Terminal(terminal, 0, "n"))->precedence ||
+							last_terminal_precedence == 0)
+						{
+							;
+						}
+						else if (last_terminal_precedence > terminals.find(Terminal(terminal, 0, "n"))->precedence) {
+							;
+						}
+						else if (last_terminal_precedence == terminals.find(Terminal(terminal, 0, "n"))->precedence &&
+							last_terminal_associativity == "l")
+						{
+							;
+						}
+						else {
+							std::unordered_set<Item, CustomHash> next_set;
+							goto_function(canonicalSet_i.first, terminal, next_set);
+
+							if (canonicalCollection.count(next_set)) {
+								auto next_state = canonicalCollection[next_set].state;
+								Action action{ SHIFT, next_state };
+								actionTable[std::make_pair(current_state, terminal)] = action;
+							}
+						}
 					}
 				}
-				else if (item.position >= item.production.size()) {
-					if (item.lookahead == goal_production_lookahead_symbol) {
-						if (item.production[0] == goal_lhs_symbol) {
-							// recall; for an accept action, the second 'state' member is irrelevant.
-							// I'd just use a 0 for literally no particular reason
-							Action action{ ACCEPT, 0 };
-							actionTable.emplace(std::make_pair(canonicalSet_i.second.state, goal_production_lookahead_symbol), action);
-						}
-						else {
-							// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
-							std::string_view lhs = item.production[0];
-							// The reduce_info_map is to avoid duplicates in the reduce_info vector. It is defined within this build_tables() 
-							// function to limit it's scope.
-
-							// If the to-be-added reduce info does not exist in the reduce_info_map, add this new reduce info to the reduce_info
-							// vector, add it as key to the reduce_info_map (with value being the index of the vector the key was added to), then 
-							// generate the REDUCE action.
-							// Else, find the already existing reduce info, and generate the REDUCE action using it. 
-
-							if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
-								reduce_info.emplace_back(lhs, item.production.size() - 1);
-								reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
-								Action action{ REDUCE, reduce_info.size() - 1 };
-								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-							}
-							else {
-								Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
-								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-							}
-						}
+				else if (item.position == item.production.size()) {
+					if (item.production[0] == goal_lhs_symbol &&
+						item.lookahead == goal_production_lookahead_symbol) 
+					{
+						Action action{ ACCEPT, 0 };
+						actionTable[std::make_pair(current_state, goal_production_lookahead_symbol)] = action;
 					}
 					else {
-						// first handle SHIFT-REDUCE conflicts that require precedence and associativity rules for resolution
-						Terminal last_terminal("", 0, "n"); // set a dummy terminal
-						set_last_terminal(last_terminal, item.production);
-
-						// check for rule/production resolution
-						if (item.production_precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) {
-							std::string_view lhs = item.production[0];
-							if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
-								reduce_info.emplace_back(lhs, item.production.size() - 1);
-								reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
-								Action action{ REDUCE, reduce_info.size() - 1 };
-								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-							}
-							else {
-								Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
-								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-							}
+						std::string_view item_production_lhs = item.production[0];
+						// Check for shift-reduce conflict
+						if (!actionTable.count(std::make_pair(current_state, item.lookahead))) {
+							Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
+							actionTable[std::make_pair(current_state, item.lookahead)] = action;
 						}
+						else if (actionTable.find(std::make_pair(current_state, item.lookahead))->second.type == SHIFT) {
+							// SHIFT-REDUCE conflict
+							int last_terminal_precedence = 0;
+							std::string last_terminal_associativity = "n";
+							set_last_terminal(last_terminal_precedence, last_terminal_associativity, item.production);
 
-						if (last_terminal.str == "") {
-							// production rhs has no terminals (production that derives a production)
-							// auto grammar_rule_no = non_terminals[item.production[item.position - 1]];
-							// add to actionTable that action[i, item.lookahead] ==> reduce (by) grammar_rule
-							std::string_view lhs = item.production[0];
-							if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
-								reduce_info.emplace_back(lhs, item.production.size() - 1);
-								reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
-								Action action{ REDUCE, reduce_info.size() - 1 };
-								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-							}
-							else {
-								Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
-								actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-							}
-						}
-						else {
-							// using the now defined last_terminal variable, resolve SHIFT-REDUCE conflict
-							// thanks to defined precedence and associativity rules
-							if (last_terminal.precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) {
-								std::string_view lhs = item.production[0];
-
-								if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
-									reduce_info.emplace_back(lhs, item.production.size() - 1);
-									reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
-									Action action{ REDUCE, reduce_info.size() - 1 };
-									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-								}
-								else {
-									Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
-									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-								}
-							}
-							else if ((last_terminal.precedence == terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) &&
-								(last_terminal.associativity == "l" || last_terminal.associativity == "n"))
+							if (item.production_precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence ||
+								last_terminal_precedence == 0) 
 							{
-								std::string_view lhs = item.production[0];
-
-								if (!reduce_info_map.count(std::make_pair(lhs, item.production.size() - 1))) {
-									reduce_info.emplace_back(lhs, item.production.size() - 1);
-									reduce_info_map[std::make_pair(lhs, item.production.size() - 1)] = reduce_info.size() - 1;
-									Action action{ REDUCE, reduce_info.size() - 1 };
-									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-								}
-								else {
-									Action action{ REDUCE, reduce_info_map.find(std::make_pair(lhs, item.production.size() - 1))->second };
-									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-								}
+								Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
+								actionTable[std::make_pair(current_state, item.lookahead)] = action;
+							}
+							else if (last_terminal_precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) {
+								Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
+								actionTable[std::make_pair(current_state, item.lookahead)] = action;
+							}
+							else if (last_terminal_precedence == terminals.find(Terminal(item.lookahead, 0, "n"))->precedence &&
+								last_terminal_associativity == "l") 
+							{
+								Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
+								actionTable[std::make_pair(current_state, item.lookahead)] = action;
 							}
 							else {
-								std::unordered_set<Item, CustomHash> next_set;
-								goto_function(canonicalSet_i.first, item.lookahead, next_set);
-								if (canonicalCollection.count(next_set)) {
-									auto next_state = canonicalCollection[next_set].state;
-									// add to actionTable that action[i, item.production[item.position]] ==> shift (to) next_state
-									Action action{ SHIFT, next_state };
-									actionTable.emplace(std::make_pair(canonicalSet_i.second.state, item.lookahead), action);
-								}
+								;
 							}
 						}
 					}
@@ -833,7 +801,7 @@ public:
 				if (canonicalCollection.count(next_set)) {
 					auto next_state = canonicalCollection[next_set].state;
 					// add to gotoTable that goto[i, non_term] ==> next_set_index
-					gotoTable.emplace(std::make_pair(canonicalSet_i.second.state, non_term), next_state);
+					gotoTable[std::make_pair(current_state, non_term)] = next_state;
 				}
 			}
 		}
@@ -873,7 +841,7 @@ public:
 			file << term.str;
 			++col;
 			if (col == total) file << "\n};\n\n";
-			if (!(col % 8)) file << ",\n\t";
+			else if (!(col % 8)) file << ",\n\t";
 			else if (col < total) file << ", ";
 		}
 		// end define terminals enum
@@ -961,6 +929,7 @@ int main(int argc, char** argv) {
 	}
 
 	ParserGen parserGen(argv[1]);
+	// parserGen.debug = false;
 
 	if (parserGen.file_access_error) {
 		std::cout << "Unable to open " << argv[1] << " file\n";
