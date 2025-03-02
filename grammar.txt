@@ -11,6 +11,7 @@ Statement > Expression
 Expression > t_NUMBER
 Expression > Grouping
 Expression > Add
+Expression > Sub
 Expression > Mul
 Expression > Div
 Expression > Unary

@@ -196,13 +196,13 @@ class ParserGen {
 		while (canonicalSet_i.size() > recorded_size) {
 			recorded_size = canonicalSet_i.size();
 			for (auto& item : canonicalSet_i) {
+				// generate [first] for item
 				if (processed_items.count(item)) continue;
 				else processed_items.insert(item);
 				
 				if (item.position >= item.production.size()) continue;
 				std::string_view C = item.production[item.position];
 
-				// generate [first] for item
 				std::unordered_set<std::string_view> item_firsts;
 
 				for (auto i = item.position + 1; i < item.production.size(); i++) {
@@ -227,7 +227,6 @@ class ParserGen {
 					item_firsts.insert(item.lookahead);
 				}
 
-				// Rest of closure algorithm
 				std::vector<std::string_view> rhs = productions[C];
 
 				for (auto& prod : rhs) {
@@ -693,11 +692,6 @@ public:
 		if (debug) print_debug_info(CANONICAL_SET);
 	}
 
-	// TODO: the algorithm for build_cc() seems to suggest that the tables *could* be built
-	// within the routine (i.e while building the canonicalCollection itself). However, 
-	// I'm not sure, and don't have the time or energy to prove this to be a workable solution.
-	// Instead, here's an implementation that seperates the build_cc() routine from the build_table()
-	// routine. For my sanity. I just need to feel like I'm making progress here.
 	void build_tables() {
 		for (auto& canonicalSet_i : canonicalCollection) {
 			auto current_state = canonicalSet_i.second.state;
@@ -729,15 +723,15 @@ public:
 						if (item.production_precedence > terminals.find(Terminal(terminal, 0, "n"))->precedence ||
 							last_terminal_precedence == 0)
 						{
-							;
+							// do nothing
 						}
 						else if (last_terminal_precedence > terminals.find(Terminal(terminal, 0, "n"))->precedence) {
-							;
+							// do nothing
 						}
 						else if (last_terminal_precedence == terminals.find(Terminal(terminal, 0, "n"))->precedence &&
 							last_terminal_associativity == "l")
 						{
-							;
+							// do nothing
 						}
 						else {
 							std::unordered_set<Item, CustomHash> next_set;
@@ -787,9 +781,6 @@ public:
 								Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
 								actionTable[std::make_pair(current_state, item.lookahead)] = action;
 							}
-							else {
-								;
-							}
 						}
 					}
 				}
@@ -800,7 +791,6 @@ public:
 				goto_function(canonicalSet_i.first, non_term, next_set);
 				if (canonicalCollection.count(next_set)) {
 					auto next_state = canonicalCollection[next_set].state;
-					// add to gotoTable that goto[i, non_term] ==> next_set_index
 					gotoTable[std::make_pair(current_state, non_term)] = next_state;
 				}
 			}
@@ -929,7 +919,7 @@ int main(int argc, char** argv) {
 	}
 
 	ParserGen parserGen(argv[1]);
-	// parserGen.debug = false;
+	parserGen.debug = false;
 
 	if (parserGen.file_access_error) {
 		std::cout << "Unable to open " << argv[1] << " file\n";
@@ -941,8 +931,6 @@ int main(int argc, char** argv) {
 		return -1;
 	}
 
-	// iterate through the productions data structure and check that every single string is either a terminal or a lhs symbol
-	// else emit error message and exit.
 	if (!parserGen.check_symbols_in_productions()) {
 		std::cout << "\nFatal Error in grammar definition. Parser-Generator terminated early.\n";
 		return -1;
@@ -951,4 +939,6 @@ int main(int argc, char** argv) {
 	parserGen.build_cc();
 	parserGen.build_tables();
 	parserGen.build_output_file();
+
+	std::cout << "\nParse tables have been generated successfully!\n";
 }
