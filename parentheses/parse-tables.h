@@ -15,8 +15,9 @@ enum TokenType {
 };
 
 std::vector<std::pair<std::string_view, size_t>> reduce_info {
-	{ *strings.find("Pair"), 2 }, { *strings.find("Pair"), 3 },
-	{ *strings.find("List"), 2 }, { *strings.find("List"), 1 }
+	{ *strings.find("Goal"), 1 }, { *strings.find("Pair"), 3 },
+	{ *strings.find("List"), 2 }, { *strings.find("List"), 1 },
+	{ *strings.find("Pair"), 2 }
 };
 
 struct PairHash {
@@ -41,12 +42,12 @@ struct Action {
 };
 
 std::unordered_map<std::pair<size_t, TokenType>, Action, PairHash> actionTable {
-	{{ 6, t_EOF }, {REDUCE, 0 }}, {{ 0, t_LP }, {SHIFT, 2 }},
-	{{ 8, t_RP }, {SHIFT, 10 }}, {{ 6, t_LP }, {REDUCE, 0 }},
+	{{ 6, t_EOF }, {REDUCE, 4 }}, {{ 0, t_LP }, {SHIFT, 2 }},
+	{{ 8, t_RP }, {SHIFT, 10 }}, {{ 6, t_LP }, {REDUCE, 4 }},
 	{{ 11, t_LP }, {REDUCE, 1 }}, {{ 5, t_RP }, {SHIFT, 11 }},
 	{{ 11, t_EOF }, {REDUCE, 1 }}, {{ 4, t_EOF }, {REDUCE, 2 }},
 	{{ 10, t_RP }, {REDUCE, 1 }}, {{ 4, t_LP }, {REDUCE, 2 }},
-	{{ 7, t_LP }, {SHIFT, 7 }}, {{ 9, t_RP }, {REDUCE, 0 }},
+	{{ 7, t_LP }, {SHIFT, 7 }}, {{ 9, t_RP }, {REDUCE, 4 }},
 	{{ 3, t_EOF }, {REDUCE, 3 }}, {{ 3, t_LP }, {REDUCE, 3 }},
 	{{ 1, t_EOF }, {ACCEPT, 0 }}, {{ 1, t_LP }, {SHIFT, 2 }},
 	{{ 2, t_RP }, {SHIFT, 6 }}, {{ 2, t_LP }, {SHIFT, 7 }},

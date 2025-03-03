@@ -24,6 +24,7 @@
     <ProjectGuid>{a3c43785-7f15-4880-b970-5d291b3becda}</ProjectGuid>
     <RootNamespace>integercalculator</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>integer-calculator</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

@@ -2,7 +2,7 @@
 #include <vector>
 #include <stack>
 
-#include "../parentheses.h"
+#include "parse-tables.h"
 
 static bool is_whitespace(char c) {
 	return (c == ' ' || c == '\r' || c == '\t');
@@ -74,7 +74,7 @@ static bool parse_tokens(std::vector<TokenType> tokens) {
 int main() {
 	std::string input;
 	std::vector<TokenType> tokens;
-	std::cout << "Parentheses Grammar Interpreter ('q' or CTRL-C to exit)\n";
+	std::cout << "Parentheses Grammar Interpreter (enter 'q' or CTRL-C to exit)\n";
 	while (true) {
 		std::cout << "> ";
 		if (!std::getline(std::cin, input) || input == "q") {

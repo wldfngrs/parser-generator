@@ -3,7 +3,7 @@
 #include <string>
 #include <stack>
 
-#include "../output.h"
+#include "parse-tables.h"
 
 static bool is_whitespace(char c) {
 	return (c == ' ' || c == '\r' || c == '\t');
@@ -91,9 +91,9 @@ static bool scan_input_to_tokens(std::string& input, std::vector<Token>& output)
 	return true;
 }
 
-static bool parse_tokens(std::vector<Token> tokens, int& output) {
+static bool parse_tokens(std::vector<Token> tokens, float& output) {
 	std::stack<size_t> states;
-	std::stack<int> values;
+	std::stack<float> values;
 	
 	states.push(0);
 	auto state = static_cast<size_t>(0);
@@ -171,7 +171,7 @@ static bool parse_tokens(std::vector<Token> tokens, int& output) {
 int main() {
 	std::string input;
 	std::vector<Token> tokens;
-	int output = 0;
+	float output = 0;
 	std::cout << "Integer Calulator ('q' or CTRL-C to exit)\n";
 	while (true) {
 		std::cout << "> ";
