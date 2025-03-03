@@ -932,7 +932,7 @@ int main(int argc, char** argv) {
 	}
 
 	ParserGen parserGen(argc, argv);
-	//parserGen.debug = false;
+	parserGen.debug = false;
 
 	if (parserGen.file_access_error) {
 		std::cout << "Unable to open " << argv[1] << " file\n";
