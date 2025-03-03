@@ -925,10 +925,18 @@ public:
 	}
 };
 
+void print_help() {
+	std::cout << "";
+}
+
 int main(int argc, char** argv) {
 	if (argc < 2 || argc > 3) {
 		std::cout << "usage: ./parsegen <path/to/grammar> [OPTIONAL] <path/to/output/file>\n       './parsegen -h' or './parsegen -H' for help information\n";
 		exit(1);
+	}
+
+	if (argv[1] == "-h" || argv[1] == "-H") {
+		print_help();
 	}
 
 	ParserGen parserGen(argc, argv);
