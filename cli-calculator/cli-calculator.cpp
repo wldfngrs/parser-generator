@@ -165,6 +165,8 @@ static bool parse_tokens(std::vector<Token> tokens, float& output) {
 			return true;
 		}
 	}
+
+	return false;
 }
 
 // change name to simple calculator
@@ -172,7 +174,7 @@ int main() {
 	std::string input;
 	std::vector<Token> tokens;
 	float output = 0;
-	std::cout << "Integer Calulator ('q' or CTRL-C to exit)\n";
+	std::cout << "CLI Calulator ('q' or CTRL-C to exit)\n";
 	while (true) {
 		std::cout << "> ";
 		if (!std::getline(std::cin, input) || input == "q") {

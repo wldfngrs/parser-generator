@@ -1,9 +1,10 @@
-#include <iostream>
-#include <sstream>
+#include <cstring>
 #include <fstream>
+#include <iostream>
+#include <map>
+#include <sstream>
 #include <string>
 #include <string_view>
-#include <map>
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
@@ -55,8 +56,6 @@ class ParserGen {
 			return str == other.str;
 		}
 	};
-
-	//TODO: Combine all of the hashes into a single hash struct for compile time polymorphism/function overloading
 
 	struct CustomHash {
 		// PairHash: std::pair<size_t, std::string_view>
@@ -702,10 +701,6 @@ public:
 		for (auto& canonicalSet_i : canonicalCollection) {
 			auto current_state = canonicalSet_i.second.state;
 
-			if (current_state == 28) {
-				std::cout << "Hit\n";
-			}
-			
 			for (auto& item : canonicalSet_i.first) {
 				if (item.position < item.production.size() &&
 					terminals.count(Terminal(item.production[item.position], 0, "n"))) 
@@ -925,18 +920,27 @@ public:
 	}
 };
 
-void print_help() {
+static void print_help() {
 	std::cout << "";
+}
+
+static inline void print_usage() {
+	std::cout << "usage: ./parsegen <path/to/grammar> [OPTIONAL] <path/to/output/file>\n       ./parsegen -h or ./parsegen -H for help information\n\n";
 }
 
 int main(int argc, char** argv) {
 	if (argc < 2 || argc > 3) {
-		std::cout << "usage: ./parsegen <path/to/grammar> [OPTIONAL] <path/to/output/file>\n       './parsegen -h' or './parsegen -H' for help information\n";
+		print_usage();
 		exit(1);
 	}
 
-	if (argv[1] == "-h" || argv[1] == "-H") {
+	if ((std::strlen(argv[1]) == 2 && argv[1][0] == '-') &&
+	   (argv[1][1] == 'h' || argv[1][1] == 'H')) {
 		print_help();
+		exit(1);
+	} else if (argv[1][0] == '-'){
+		print_usage();
+		exit(1);
 	}
 
 	ParserGen parserGen(argc, argv);
@@ -961,5 +965,5 @@ int main(int argc, char** argv) {
 	parserGen.build_tables();
 	parserGen.build_output_file();
 
-	std::cout << "\nParse tables have been generated and written to '" << parserGen.output_file_path << "' successfully!\n";
+	std::cout << "\nParse tables have been generated and written to '" << parserGen.output_file_path << "' successfully!\n\n";
 }
