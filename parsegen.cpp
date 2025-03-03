@@ -309,6 +309,7 @@ class ParserGen {
 	std::unordered_set<std::string_view> non_terminals;
 
 	std::string grammar_txt;
+
 	std::string_view goal_production_lookahead_symbol;
 	std::string_view goal_lhs_symbol;
 
@@ -325,10 +326,15 @@ class ParserGen {
 public:
 	bool debug = true;
 	bool file_access_error = false;
+	
+	// Defaults to output.h in the parser-generator directory if a path is not provided by the user
+	std::string output_file_path{ "output.h" };
 
-	ParserGen(std::string path_to_grammar) {
+	ParserGen(int cmd_args_count, char** cmd_args) {
 		std::stringstream ss;
-		std::ifstream file(path_to_grammar, std::ios::in);
+		std::ifstream file(cmd_args[1], std::ios::in);
+
+		if (cmd_args_count == 3) output_file_path = cmd_args[2];
 
 		if (!file.is_open()) {
 			file_access_error = true;
@@ -695,6 +701,10 @@ public:
 	void build_tables() {
 		for (auto& canonicalSet_i : canonicalCollection) {
 			auto current_state = canonicalSet_i.second.state;
+
+			if (current_state == 28) {
+				std::cout << "Hit\n";
+			}
 			
 			for (auto& item : canonicalSet_i.first) {
 				if (item.position < item.production.size() &&
@@ -754,31 +764,34 @@ public:
 					}
 					else {
 						std::string_view item_production_lhs = item.production[0];
-						// Check for shift-reduce conflict
-						if (!actionTable.count(std::make_pair(current_state, item.lookahead))) {
+						// Check for SHIFT-REDUCE conflict
+						int last_terminal_precedence = 0;
+						std::string last_terminal_associativity = "n";
+						set_last_terminal(last_terminal_precedence, last_terminal_associativity, item.production);
+
+						if (item.production_precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence ||
+							last_terminal_precedence == 0)
+						{
 							Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
 							actionTable[std::make_pair(current_state, item.lookahead)] = action;
 						}
-						else if (actionTable.find(std::make_pair(current_state, item.lookahead))->second.type == SHIFT) {
-							// SHIFT-REDUCE conflict
-							int last_terminal_precedence = 0;
-							std::string last_terminal_associativity = "n";
-							set_last_terminal(last_terminal_precedence, last_terminal_associativity, item.production);
+						else if (last_terminal_precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) {
+							Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
+							actionTable[std::make_pair(current_state, item.lookahead)] = action;
+						}
+						else if (last_terminal_precedence == terminals.find(Terminal(item.lookahead, 0, "n"))->precedence &&
+							last_terminal_associativity == "l")
+						{
+							Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
+							actionTable[std::make_pair(current_state, item.lookahead)] = action;
+						}
+						else {
+							std::unordered_set<Item, CustomHash> next_set;
+							goto_function(canonicalSet_i.first, item.lookahead, next_set);
 
-							if (item.production_precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence ||
-								last_terminal_precedence == 0) 
-							{
-								Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
-								actionTable[std::make_pair(current_state, item.lookahead)] = action;
-							}
-							else if (last_terminal_precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence) {
-								Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
-								actionTable[std::make_pair(current_state, item.lookahead)] = action;
-							}
-							else if (last_terminal_precedence == terminals.find(Terminal(item.lookahead, 0, "n"))->precedence &&
-								last_terminal_associativity == "l") 
-							{
-								Action action{ REDUCE, reduce_info_map.find(std::make_pair(item_production_lhs, item.production.size() - 1))->second };
+							if (canonicalCollection.count(next_set)) {
+								auto next_state = canonicalCollection[next_set].state;
+								Action action{ SHIFT, next_state };
 								actionTable[std::make_pair(current_state, item.lookahead)] = action;
 							}
 						}
@@ -803,7 +816,7 @@ public:
 	}
 
 	void build_output_file() {
-		std::ofstream file("output.h", std::ios::out);
+		std::ofstream file(output_file_path, std::ios::out);
 		file << "#pragma once\n\n"
 			"#include <unordered_map>\n"
 			"#include <unordered_set>\n"
@@ -913,13 +926,13 @@ public:
 };
 
 int main(int argc, char** argv) {
-	if (argc != 2) {
-		std::cout << "usage: ./parsegen <path/to/grammar>\n";
+	if (argc < 2 || argc > 3) {
+		std::cout << "usage: ./parsegen <path/to/grammar> [OPTIONAL] <path/to/output/file>\n       './parsegen -h' or './parsegen -H' for help information\n";
 		exit(1);
 	}
 
-	ParserGen parserGen(argv[1]);
-	parserGen.debug = false;
+	ParserGen parserGen(argc, argv);
+	//parserGen.debug = false;
 
 	if (parserGen.file_access_error) {
 		std::cout << "Unable to open " << argv[1] << " file\n";
@@ -940,5 +953,5 @@ int main(int argc, char** argv) {
 	parserGen.build_tables();
 	parserGen.build_output_file();
 
-	std::cout << "\nParse tables have been generated successfully!\n";
+	std::cout << "\nParse tables have been generated and written to '" << parserGen.output_file_path << "' successfully!\n";
 }
