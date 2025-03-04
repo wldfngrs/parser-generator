@@ -46,7 +46,7 @@ static bool parse(std::vector<TokenType> tokens) {
 			return false;
 		}
 		
-		Action action = actionTable[std::make_pair(state, tokens[i])];
+		Action& action = actionTable[std::make_pair(state, tokens[i])];
 
 		if (action.type == ActionType::REDUCE) {
 			auto index = actionTable[std::make_pair(state, tokens[i])].value;
