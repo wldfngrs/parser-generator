@@ -18,7 +18,7 @@ struct Token {
 	std::string value;
 };
 
-static bool scan_input_to_tokens(std::string& input, std::vector<Token>& output) {
+static bool scan(std::string& input, std::vector<Token>& output) {
 	bool scan_error = false;
 	auto start = 0;
 	
@@ -91,7 +91,7 @@ static bool scan_input_to_tokens(std::string& input, std::vector<Token>& output)
 	return true;
 }
 
-static bool parse_tokens(std::vector<Token> tokens, float& output) {
+static bool parse(std::vector<Token> tokens, float& output) {
 	std::stack<size_t> states;
 	std::stack<float> values;
 	
@@ -169,7 +169,6 @@ static bool parse_tokens(std::vector<Token> tokens, float& output) {
 	return false;
 }
 
-// change name to simple calculator
 int main() {
 	std::string input;
 	std::vector<Token> tokens;
@@ -185,11 +184,11 @@ int main() {
 			continue;
 		}
 
-		if (!scan_input_to_tokens(input, tokens)) {
+		if (!scan(input, tokens)) {
 			continue;
 		}
 
-		if (parse_tokens(tokens, output)) {
+		if (parse(tokens, output)) {
 			std::cout << output << "\n";
 		}
 		else {

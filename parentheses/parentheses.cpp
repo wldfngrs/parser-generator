@@ -8,7 +8,7 @@ static bool is_whitespace(char c) {
 	return (c == ' ' || c == '\r' || c == '\t');
 }
 
-static bool scan_input_to_tokens(std::string& input, std::vector<TokenType>& output) {
+static bool scan(std::string& input, std::vector<TokenType>& output) {
 	bool scan_error = false;
 	for (auto& c : input) {
 		if (c == '\n' ||
@@ -35,7 +35,7 @@ static bool scan_input_to_tokens(std::string& input, std::vector<TokenType>& out
 	return true;
 }
 
-static bool parse_tokens(std::vector<TokenType> tokens) {
+static bool parse(std::vector<TokenType> tokens) {
 	std::stack<size_t> states;
 	states.push(0);
 	auto state = static_cast<size_t>(0);
@@ -69,6 +69,7 @@ static bool parse_tokens(std::vector<TokenType> tokens) {
 			return true;
 		}
 	}
+	return false;
 }
 
 int main() {
@@ -85,11 +86,11 @@ int main() {
 			continue;
 		}
 		
-		if (!scan_input_to_tokens(input, tokens)) {
+		if (!scan(input, tokens)) {
 			continue;
 		}
 		
-		if (parse_tokens(tokens)) {
+		if (parse(tokens)) {
 			std::cout << "Valid Input String\n";
 		}
 		else {
