@@ -401,16 +401,14 @@ public:
 								prec = std::stoi(term_info[1]);
 							}
 							catch (std::invalid_argument const& ex) {
-								if (term_info[1] == "n" || term_info[1] == "l" || term_info[1] == "r") {
-									//terminals.emplace(*strings.find(term_info[0]), 0, term_info[1]);
-									associativity = term_info[1];
-								} else {
+								if (term_info[1] == "n" || term_info[1] == "l" || term_info[1] == "r") associativity = term_info[1];
+								else {
 									error_in_get_terminals_and_productions = true;
 									std::cout << (is_alpha(term_info[1][0]) ? 
 												// is alphabet
 												"\nCaughtException: Invalid non-integer argument to precedence field: '" : 
 												// not-alphabet
-												"Error: Terminal associativity field can only be one of : 'r' (right - associative), 'l' (left - associative), 'n' (non - associative)\n")
+												"\nError: Terminal associativity field can only be one of : 'r' (right - associative), 'l' (left - associative), 'n' (non - associative)\n")
 											<< term_info[1] << "'\n"
 											<< "[Line " << l_no << "]: " << line << "\n";
 									continue;
