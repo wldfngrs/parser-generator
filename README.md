@@ -64,7 +64,7 @@ The input grammar specification should follow these base rules:
 - **Terminals (symbols prefixed by 't_') cannot appear on the RHS of a rule/production.**
 - **The RHS and LHS of a production must be delimited by ' > '. Note: _[SPACE] [GREATER_THAN] [SPACE]_**
 
-Of course, you'd recieve helpful error and diagnostic messages if any of these rules are ignored.
+Of course, you'd receive helpful error and diagnostic messages if any of these rules are ignored.
 ### Parentheses grammar
 For a simple, yet robust example, take a 'parentheses' grammar that expects a right-parenthesis symbol `)` for every left-parenthesis symbol `(` (in that order). For example, `()` is valid but `)(` is not.
 
