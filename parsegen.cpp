@@ -925,12 +925,40 @@ public:
 	}
 };
 
-static void print_help() {
-	std::cout << "";
-}
-
 static inline void print_usage() {
 	std::cout << "usage: ./parsegen <path/to/grammar> [OPTIONAL] <path/to/output/file>\n       ./parsegen -h or ./parsegen -H for help information\n\n";
+}
+
+static inline void print_help() {
+	std::cout << "For full help information, visit: https://github.com/wldfngrs/parser-generator/blob/main/README.md\n\n"
+		<< "Usage\n=====\n\n";
+	print_usage();
+	std::cout << "LR(1) Grammar Specification Syntax\n==================================\n\n"
+		<< "Note: `RHS` ('Right Hand Side'), `LHS` ('Left Hand Side').\n\n"
+		<< "The input grammar specification should follow these base rules:\n\n"
+		<< "\t- Terminals must be prefixed by 't_'. Each terminal definition line starting this way.\n"
+		<< "\t- The first line in the terminal definition block should be the goal production lookahead terminal.\n"
+		<< "\t- Terminals must be defined first, in a contiguous block without interleaving empty lines between individual definitions.\n"
+		<< "\t- The first occuring empty line signifies the end of the terminal definition block, and the start of the rules/productions block.\n"
+		<< "\t- Terminals (symbols prefixed by 't_') cannot appear on the RHS of a rule/production.\n"
+		<< "\t- The RHS and LHS of a production must be delimited by ' > '. Note: [SPACE] [GREATER_THAN] [SPACE]\n\n"
+		<< "Of course, you'd receive helpful error and diagnostic messages if any of these rules are ignored.\n\n"
+		<< "Precedence and associativity\n============================\n\n"
+		<< "Following the terminal name definition, on the same line, the terminal's precedence value and associativity behavior can be explicitly set.\n\n"
+		<< "Precedence values must be integers (positive or negative). If not explicitly set, the terminal precedence value defaults to 0. The higher the precedence value set, the higher the terminal precedence.\n\n"
+		<< "Associativity behavior must be one of l (left-associative), r (right-associative), or n (non-associative). If not explicitly set, the associativity behavior defaults to n (non-associative).\n\n"
+		<< "The precedence of a rule/production can be set by specifying an integer value at the end of a rule/production.\n\n"
+		<< "SHIFT-REDUCE conflicts\n======================\n\n"
+		<< "SHIFT-REDUCE conflict occurs when both a SHIFT and REDUCE action would produce a valid parse function next state. These conflicts are resolved by applying these conditions in order:\n\n"
+		<< "Let rule be a rule subject to reduce and term be a terminal/token that is encountered on input.\n\n"
+		<< "\t- If explicit rule precedence is bigger than term precedence, perform a REDUCE.\n"
+		<< "\t- If precedence of last terminal in rule is bigger than term precedence, perform a REDUCE.\n"
+		<< "\t- If precedence of last terminal in rule is equal to term precedence and last terminal in rule is left-associative, perform a REDUCE.\n"
+		<< "Otherwise, perform a SHIFT.\n\n"
+		<< "REDUCE-REDUCE conflicts\n=======================\n\n"
+		<< "In some cases, the language is ill-formed and the grammar specification on REDUCE actions is unclear. That is, more than one rules/productions have the same LHS.\n\n"
+		<< "This is a fatal error that results in the parser generator terminating early with an error message identifying the rules/productions leading to ambiguous REDUCE actions.\n\n"
+		<< "Check the 'math-expressions/' and 'parentheses/' directories for example parsers and further understanding.\n";
 }
 
 int main(int argc, char** argv) {

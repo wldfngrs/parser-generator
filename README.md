@@ -59,7 +59,7 @@ Either of the help options; `-h`, `-H`, print the grammar specification syntax t
 The input grammar specification should follow these base rules:
 - **Terminals must be prefixed by 't_'. Each terminal definition line starting this way.**
 - **The first line in the terminal definition block should be the goal production lookahead terminal**.
-- **Terminals must be defined first, in a contigious block without interleaving empty lines between individual definitions.**
+- **Terminals must be defined first, in a contiguous block without interleaving empty lines between individual definitions.**
 - **The first occuring empty line signifies the end of the terminal definition block, and the start of the rules/productions block.**
 - **Terminals (symbols prefixed by 't_') cannot appear on the RHS of a rule/production.**
 - **The RHS and LHS of a production must be delimited by ' > '. Note: _[SPACE] [GREATER_THAN] [SPACE]_**
