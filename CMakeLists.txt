@@ -7,8 +7,8 @@ set(CMAKE_CXX_STANDARD 17)
 add_executable(parsegen parsegen.cpp)
 
 # calculator interpreter
-add_executable(calculator cli-calculator/cli-calculator.cpp
-			  cli-calculator/parse-tables.h)
+add_executable(expressions math-expressions/expressions.cpp
+			  math-expressions/parse-tables.h)
 
 # parentheses interpreter
 add_executable(parentheses parentheses/parentheses.cpp
