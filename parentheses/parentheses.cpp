@@ -87,6 +87,7 @@ int main() {
 		}
 		
 		if (!scan(input, tokens)) {
+			tokens.clear();
 			continue;
 		}
 		
