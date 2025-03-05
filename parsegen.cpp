@@ -95,8 +95,6 @@ class ParserGen {
 		}
 	};
 
-	std::vector<size_t> hashes;
-
 	enum ActionType {
 		SHIFT,
 		REDUCE,
@@ -111,7 +109,7 @@ class ParserGen {
 	void print_debug_info(ParseGenLvl pg_lvl) {
 		switch (pg_lvl) {
 		case TERMINALS: {
-			// pretty print terminals in 8-column table.
+			// pretty print terminals in 3-column table.
 			std::cout << "Extracted Terminals\n===================\n";
 			auto col = 0;
 			for (auto& terminal : terminals) {
@@ -124,7 +122,7 @@ class ParserGen {
 			break;
 		}
 		case NON_TERMINALS: {
-			// pretty print non-terminals in 8-column table.
+			// pretty print non-terminals in 3-column table.
 			std::cout << "\nExtracted Non-Terminals\n=======================\n";
 			auto col = 0;
 			for (auto& non_terminal : non_terminals) {
@@ -216,15 +214,11 @@ class ParserGen {
 							item_firsts.insert(initial_term);
 						}
 
-						if (!item_firsts.empty()) {
-							break;
-						}
+						if (!item_firsts.empty()) break;
 					}
 				}
 
-				if (item_firsts.empty()) {
-					item_firsts.insert(item.lookahead);
-				}
+				if (item_firsts.empty()) item_firsts.insert(item.lookahead);
 
 				std::vector<std::string_view> rhs = productions[C];
 
@@ -237,9 +231,7 @@ class ParserGen {
 					for (; i < prod.size(); i++) {
 						if (is_whitespace(prod[i])) {
 							symbol = std::string(prod, start, i - start);
-							if (symbol != "") {
-								cItemProd.push_back(*strings.find(symbol));
-							}
+							if (symbol != "") cItemProd.push_back(*strings.find(symbol));
 							start = i + 1;
 						}
 					}
@@ -284,6 +276,8 @@ class ParserGen {
 		}
 	}
 
+	// strings interning container. Stores original string objects, so further attempts 
+	// to create the same string literal are string_views to the original object instead.
 	std::unordered_set<std::string> strings;
 
 	// 'string' as key, 'vector of strings' as value
@@ -342,8 +336,6 @@ public:
 
 		ss << file.rdbuf();
 		grammar_txt = ss.str();
-
-		file.close();
 	}
 
 	bool get_terminals_and_productions() {
@@ -733,17 +725,18 @@ public:
 						if (item.production_precedence > terminals.find(Terminal(terminal, 0, "n"))->precedence ||
 							last_terminal_precedence == 0)
 						{
-							// do nothing
+							// valid REDUCE, do nothing
 						}
 						else if (last_terminal_precedence > terminals.find(Terminal(terminal, 0, "n"))->precedence) {
-							// do nothing
+							// valid REDUCE, do nothing
 						}
 						else if (last_terminal_precedence == terminals.find(Terminal(terminal, 0, "n"))->precedence &&
 							last_terminal_associativity == "l")
 						{
-							// do nothing
+							// valid REDUCE, do nothing
 						}
 						else {
+							// invalid REDUCE, use SHIFT instead.
 							std::unordered_set<Item, CustomHash> next_set;
 							goto_function(canonicalSet_i.first, terminal, next_set);
 
@@ -768,6 +761,10 @@ public:
 						int last_terminal_precedence = 0;
 						std::string last_terminal_associativity = "n";
 						set_last_terminal(last_terminal_precedence, last_terminal_associativity, item.production);
+
+						// Note that these seperate conditions can be combined to a single if-or statement.
+						// Regardless, I choose to retain it this way because the conditions are long
+						// and ugly. This preserves readability, somewhat.
 
 						if (item.production_precedence > terminals.find(Terminal(item.lookahead, 0, "n"))->precedence ||
 							last_terminal_precedence == 0)
