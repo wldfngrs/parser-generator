@@ -353,11 +353,10 @@ public:
 		bool parsing_terminals = true;
 		bool parsing_productions = false;
 		bool error_in_get_terminals_and_productions = false;
-		std::unordered_map<std::string, std::string> right_deriv;
 
 		for (size_t i = 0; i < grammar_txt.length(); i++) {
 			if (grammar_txt[i] == '\n' || i == grammar_txt.length() - 1) {
-				if (i == grammar_txt.length() - 1) line = std::string(grammar_txt, start_txt, i - start_txt + 1);
+				if (i == grammar_txt.length() - 1 && grammar_txt[i] != '\n') line = std::string(grammar_txt, start_txt, i - start_txt + 1);
 				else line = std::string(grammar_txt, start_txt, i - start_txt);
 				start_txt = i + 1;
 
@@ -534,14 +533,6 @@ public:
 						continue;
 					}
 					
-					if (right_deriv.count(rhs)) {
-						error_in_get_terminals_and_productions = true;
-						std::cout << "\nError: Grammar production has a potential REDUCE-REDUCE conflict.\n"
-							<< "[Line " << l_no << "]: " << line << " AND "
-							<< right_deriv[rhs] << " > " << rhs << "\n";
-						continue;
-					}
-
 					// check for explicitly defined precedence for rule/production
 					int prec = 0;
 					for (auto i = static_cast<int>(rhs.size()); i > 0; i--) {
@@ -575,7 +566,6 @@ public:
 					strings.insert(rhs);
 					strings.insert(lhs);
 
-					right_deriv[*strings.find(rhs)] = *strings.find(lhs);
 					productions[*strings.find(lhs)].push_back(*strings.find(rhs));
 					production_precedence[*strings.find(rhs)] = prec;
 				}
@@ -589,16 +579,21 @@ public:
 			print_debug_info(PRODUCTIONS);
 		}
 
-		return error_in_get_terminals_and_productions ? false : true;
+		return !error_in_get_terminals_and_productions;
 	}
 
 	bool check_symbols_in_productions() {
 		bool found_invalid_symbol = false;
+		bool reduce_reduce_conflict = false;
+		
+		std::unordered_map<std::string, std::string> valid_prod;
+
 		std::string symbol;
 
 		for (auto& production : productions) {
 			std::vector<std::string_view> values = production.second;
 			for (auto& value : values) {
+				std::string symbols_in_rhs;
 				auto start = 0; auto i = 0;
 				for (auto i = 0; i < value.size(); i++) {
 					if (is_whitespace(value[i])) {
@@ -611,6 +606,8 @@ public:
 								std::cout << "\nError: Unexpected symbol '" << symbol << "'\n"
 									<< "Fix production rule: '" << production.first << " > " << value << "'\n";
 							}
+							symbols_in_rhs += symbol;
+							symbols_in_rhs += " ";
 						}
 						start = i + 1;
 					}
@@ -625,11 +622,21 @@ public:
 						std::cout << "\nError: Unexpected symbol '" << symbol << "'\n"
 							<< "Fix production rule: '" << production.first << " > " << value << "'\n";
 					}
+					symbols_in_rhs += symbol;
+				}
+
+				if (valid_prod.find(symbols_in_rhs) == valid_prod.end()) valid_prod[symbols_in_rhs] = production.first;
+				else {
+					reduce_reduce_conflict = true;
+					std::cout << "\nError: Ill-defined grammar has REDUCE-REDUCE conflict.\n"
+						<< production.first << " > " << symbols_in_rhs << " AND "
+						<< valid_prod[symbols_in_rhs] << " > " << symbols_in_rhs << "\n";
+					return !reduce_reduce_conflict;
 				}
 			}
 		}
 
-		return found_invalid_symbol ? false : true;
+		return !found_invalid_symbol;
 	}
 
 	void build_cc() {
