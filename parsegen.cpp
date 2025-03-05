@@ -817,6 +817,13 @@ public:
 
 	void build_output_file() {
 		std::ofstream file(output_file_path, std::ios::out);
+		
+		if (!file.is_open()) {
+			file_access_error = true;
+			output_file_path = "output.h";
+			file.open(output_file_path, std::ios::out);
+		}
+		
 		file << "#pragma once\n\n"
 			"#include <unordered_map>\n"
 			"#include <unordered_set>\n"
@@ -980,23 +987,28 @@ int main(int argc, char** argv) {
 	parserGen.debug = false;
 
 	if (parserGen.file_access_error) {
-		std::cout << "Unable to open " << argv[1] << " file\n";
+		std::cout << "\nUnable to open " << argv[1] << " file.\n\n";
 		return -1;
 	}
 
 	if (!parserGen.get_terminals_and_productions()) {
-		std::cout << "\nFatal error in grammar definition. Parser-Generator terminated early.\n";
+		std::cout << "\nFatal error in grammar definition. Parser-Generator terminated early.\n\n";
 		return -1;
 	}
 
 	if (!parserGen.check_symbols_in_productions()) {
-		std::cout << "\nFatal Error in grammar definition. Parser-Generator terminated early.\n";
+		std::cout << "\nFatal Error in grammar definition. Parser-Generator terminated early.\n\n";
 		return -1;
 	}
 
 	parserGen.build_cc();
 	parserGen.build_tables();
 	parserGen.build_output_file();
+
+	if (parserGen.file_access_error) {
+		std::cout << "\nParse tables generated successfully. Invalid output file directory. Parse tables have been written to '" << parserGen.output_file_path << "' instead.\n\n";
+		return -1;
+	}
 
 	std::cout << "\nParse tables have been generated and written to '" << parserGen.output_file_path << "' successfully!\n\n";
 }
