@@ -13,7 +13,7 @@ YAPG (if you'd call it that) takes a specification for an LR(1) grammar as input
 	* [Parentheses parse function](#parentheses-parse-function)
 	* [Precedence and associativity](#precedence-and-associativity)
 		* [Terminal precedence](#terminal-precedence)
-		* [Explicit rule/production precedence](#explicit-rule-production-precedence)
+		* [Explicit rule/production precedence](#explicit-ruleproduction-precedence)
 * [Conflicts](#conflicts)
 	* [SHIFT-REDUCE conflicts](#shift-reduce-conflicts)
 	* [REDUCE-REDUCE conflicts](#reduce-reduce-conflicts)
