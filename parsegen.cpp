@@ -591,8 +591,8 @@ public:
 					if (is_whitespace(value[i])) {
 						symbol = std::string(value, start, i - start);
 						if (symbol != "") {
-							if (terminals.find(Terminal(symbol, 0, "n")) == terminals.end() &&
-								non_terminals.find(symbol) == non_terminals.end())
+							if (!(terminals.count(Terminal(symbol, 0, "n")) || 
+								non_terminals.count(symbol)))
 							{
 								found_invalid_symbol = true;
 								std::cout << "\nError: Unexpected symbol '" << symbol << "'\n"
@@ -607,8 +607,8 @@ public:
 
 				symbol = std::string(value, start, value.size() - start);
 				if (symbol != "") {
-					if (terminals.find(Terminal(symbol, 0, "n")) == terminals.end() &&
-						non_terminals.find(symbol) == non_terminals.end())
+					if (!(terminals.count(Terminal(symbol, 0, "n")) ||
+						non_terminals.count(symbol)))
 					{
 						found_invalid_symbol = true;
 						std::cout << "\nError: Unexpected symbol '" << symbol << "'\n"
@@ -617,7 +617,7 @@ public:
 					symbols_in_rhs += symbol;
 				}
 
-				if (valid_prod.find(symbols_in_rhs) == valid_prod.end()) valid_prod[symbols_in_rhs] = production.first;
+				if (!valid_prod.count(symbols_in_rhs)) valid_prod[symbols_in_rhs] = production.first;
 				else {
 					reduce_reduce_conflict = true;
 					std::cout << "\nError: Ill-defined grammar has REDUCE-REDUCE conflict.\n"
