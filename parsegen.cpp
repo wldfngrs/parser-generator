@@ -655,13 +655,13 @@ public:
 			
 			canonicalSet_0.emplace(1, beginItemProd, goal_production_lookahead_symbol, production_precedence[prod]);
 		}
-
-		auto number_of_unmarked_sets = 0;
-		size_t set_index = 0;
+		
 		closure_function(canonicalSet_0);
 		CanonicalCollectionValue ccv{ set_index, false };
 		canonicalCollection[canonicalSet_0] = ccv;
 
+		auto number_of_unmarked_sets = 0;
+		size_t set_index = 0;
 		// count "unmarked" and keep looping until "unmarked" is equal
 		// to zero. That is, all available sets in canonicalCollection have
 		// been processed. This is to ensure that sets inserted after the
