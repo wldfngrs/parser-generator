@@ -26,7 +26,7 @@ While working on a compiler to LLVM IR, I had to deal with a pretty common compi
 
 Now, I'm a sucker for "figuring out how things work" so of course I decided to write my own parser generator. Following three weeks of studying as much theory on parsing as I could find, alongside pretty consistent programming, I was thankfully successful. 
 
-I don't expect this to be a big thing (whatever that means). It's just something I had a lot of fun working on. Plus, I'd include a less-than formal description of table-driven LR(1) parsing and table generation in a seperate blog post. So much of the existing material exploring the topic can be "tough" looking.
+I don't expect this to be a big thing (whatever that means). It's just something I had a lot of fun working on. Plus, I'd include a less-than formal description of table-driven LR(1) parsing and table generation in a seperate [blog post](https://cruxofthematter.substack.com/). So much of the existing material exploring the topic can be "tough" looking.
 
 ## Installation
 The following commands clone the repository and compile the parser-generator:
